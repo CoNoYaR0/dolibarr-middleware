@@ -39,7 +39,7 @@ if (config.db.sslMode && ['require', 'prefer', 'allow', 'verify-ca', 'verify-ful
 
 let pool;
 try {
-  pool = new Pool(dbConfig);
+  pool = new Pool(dbServiceConfig);
 
   pool.on('connect', () => {
     logger.info('PostgreSQL connected successfully.');
