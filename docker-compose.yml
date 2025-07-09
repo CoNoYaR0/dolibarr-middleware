@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dolibarr_middleware_app
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:${PORT:-3000}" # Host port:Container port (uses PORT from .env or defaults to 3000)
+    volumes:
+      - .:/usr/src/app # Mount local code for development (live reload)
+      - /usr/src/app/node_modules # Keep node_modules from image, don't overwrite with local
+    # Use an .env file at the root of the project for environment variables
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=${PORT:-3000} # Ensure PORT is also available inside container if not in .env
+      # Database connection details will be sourced from .env file,
+      # but ensure they match what the db service below uses if .env is not comprehensive.
+      # Example:
+      # - DB_HOST=db # Service name of the postgres container
+      # - DB_USER=${DB_USER}
+      # - DB_PASSWORD=${DB_PASSWORD}
+      # - DB_NAME=${DB_NAME}
+      # - DB_PORT=5432
+    depends_on:
+      db:
+        condition: service_healthy # Wait for db to be healthy
+    command: npm run dev # Use dev script for hot-reloading with --watch
+
+  db:
+    image: postgres:15-alpine
+    container_name: dolibarr_middleware_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password123} # Change this in your .env for security
+      POSTGRES_DB: ${DB_NAME:-dolibarr_middleware_dev_db}
+    ports:
+      - "${DB_EXTERNAL_PORT:-5433}:${DB_PORT:-5432}" # Expose DB port to host (e.g., for pgAdmin), maps container 5432 to host 5433
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d ${DB_NAME:-dolibarr_middleware_dev_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres_data: # Defines the named volume for data persistence
+    driver: local
+networks:
+  default:
+    name: dolibarr_middleware_network
+    driver: bridge
+
+# To run:
+# 1. Create a .env file in the root with your configurations (DB_USER, DB_PASSWORD, DB_NAME, PORT, etc.)
+#    Example .env:
+#    NODE_ENV=development
+#    PORT=3000
+#    LOG_LEVEL=debug
+#
+#    DB_USER=myuser
+#    DB_PASSWORD=mypassword
+#    DB_NAME=myapp_dev
+#    DB_HOST=db # Important: This should be the service name 'db' for app to connect to db container
+#    DB_PORT=5432 # Internal port for PostgreSQL
+#
+#    DOLIBARR_API_URL=your_dolibarr_api_url
+#    DOLIBARR_API_KEY=your_dolibarr_api_key
+#
+# 2. Run `docker-compose up --build`
+# 3. Access the app at http://localhost:3000 (or your specified APP_PORT)
+# 4. Connect to DB from host on port 5433 (or your specified DB_EXTERNAL_PORT)
+#
+# To apply SQL migrations (after db is up and you have a migration tool):
+# docker-compose exec app npm run migrate:latest (assuming you add a migrate script)
+# Or connect via pgAdmin/psql and run the .sql file manually for now.
+#
+# To stop: `docker-compose down`
+# To stop and remove volumes: `docker-compose down -v`
