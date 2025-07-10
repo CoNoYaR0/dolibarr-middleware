@@ -130,7 +130,8 @@ async function syncCategories() {
 async function syncProducts() {
   logger.info('Starting product synchronization...');
   const catMapRes = await db.query('SELECT dolibarr_category_id, id FROM categories WHERE dolibarr_category_id IS NOT NULL;');
-  const catMap = new Map(catMapRes.rows.map(r => [r.dolibarr_category_id, r.id]));
+  const catMap = new Map(catMapRes.rows.map(r => [parseInt(r.dolibarr_category_id, 10), r.id])); // Ensure key is number
+  logger.info({ catMapContent: Array.from(catMap.entries()) }, 'Category map created:');
   let allProducts = [];
   let currentPage = 0;
   const limit = 100;
@@ -145,6 +146,8 @@ async function syncProducts() {
     }
     logger.info(`Fetched ${allProducts.length} products.`);
     for (const item of allProducts) {
+      // Log raw product category fields
+      logger.info({ productId: item.id, ref: item.ref, fk_categorie: item.fk_categorie, api_category_id: item.category_id }, 'Raw product category fields from API:');
       const data = transformProduct(item, catMap);
       if (!data.dolibarr_product_id) continue;
       await db.query(
