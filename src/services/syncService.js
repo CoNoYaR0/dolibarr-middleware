@@ -288,24 +288,72 @@ async function syncStockLevels() {
   logger.info('Starting stock level synchronization...');
   const prodsRes = await db.query('SELECT p.id as local_product_id, p.dolibarr_product_id, pv.id as local_variant_id, pv.dolibarr_variant_id FROM products p LEFT JOIN product_variants pv ON p.id = pv.product_id WHERE p.dolibarr_product_id IS NOT NULL;');
   if (prodsRes.rows.length === 0) { logger.info('No products/variants to sync stock for.'); return; }
+
+  // Log the product mapping array for debugging product ID 2 issue
+  logger.info({ productsFromDB: prodsRes.rows }, 'Products available for stock mapping:');
+
   const varMap = new Map(prodsRes.rows.filter(r => r.dolibarr_variant_id).map(r => [r.dolibarr_variant_id, r.local_variant_id]));
   const uniqProdIds = [...new Set(prodsRes.rows.map(r => r.dolibarr_product_id))];
+
   for (const dlbProdId of uniqProdIds) {
     try {
       const stockApiData = await dolibarrApi.getProductStock(dlbProdId);
-      // Log the raw API response for this product ID
       logger.info({ dlbProdId, stockApiDataFromDolibarr: stockApiData }, 'Raw stock API data received:');
 
-      const entries = Array.isArray(stockApiData) ? stockApiData : (stockApiData ? [stockApiData] : []);
-      if (entries.length === 0) {
-        // Also log if entries array is empty after processing stockApiData
-        logger.info({ dlbProdId, processedEntries: entries }, 'No processable stock entries found after parsing API data.');
+      if (!stockApiData || !stockApiData.stock_warehouses || Object.keys(stockApiData.stock_warehouses).length === 0) {
+        logger.info({ dlbProdId }, 'No stock_warehouses data or empty stock_warehouses for product.');
         continue;
       }
-      for (const entry of entries) {
-        let locProdId = null; let locVarId = null;
-        if (entry.fk_product_fils || entry.variant_id) {
-          const dlbVarId = parseInt(entry.fk_product_fils || entry.variant_id, 10);
+
+      // Iterate over warehouses in stock_warehouses
+      for (const warehouseId in stockApiData.stock_warehouses) {
+        const stockDetail = stockApiData.stock_warehouses[warehouseId];
+        // Assuming stockDetail contains 'real' for quantity and 'id' for warehouse's own ID in that context (which might just be warehouseId again)
+        // We need to adapt this to what transformStockLevel expects or adapt transformStockLevel
+
+        // Create an 'entry-like' object for transformStockLevel
+        const syntheticEntry = {
+          qty: stockDetail.real, // 'real' seems to be the quantity
+          fk_warehouse: warehouseId, // The key of stock_warehouses is the warehouse ID
+          // tms or date_modification would ideally come from the API if available per warehouse, otherwise use current time or product's tms
+          // For now, let's assume product's overall tms might be relevant if not per-warehouse timestamp is given.
+          // This might need adjustment based on how Dolibarr provides update timestamps for stock.
+          // If stockApiData itself has a global 'tms', use that. Otherwise, this will default to new Date() in transformStockLevel.
+          tms: stockApiData.tms || null
+        };
+
+        let locProdId = null;
+        let locVarId = null;
+
+        // TODO: Determine if this stock entry is for a base product or a variant.
+        // The current API response `{"stock_warehouses": {"1": {"real": "20", "id": "1"}}}`
+        // does not seem to differentiate between base product stock and variant stock directly in this structure.
+        // This part of the logic might need significant rework if variants have separate stock tracked via this endpoint.
+        // For now, we'll assume it's for the base dlbProdId.
+        // If Dolibarr's /products/{id}/stock includes variant stock, the response structure needs to be understood.
+
+        const pRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && !r.dolibarr_variant_id);
+        if (pRow) {
+          locProdId = pRow.local_product_id;
+        } else {
+          // Attempt to find if it's for a variant, though the current API response doesn't give variant ID here.
+          // This path is unlikely to be hit correctly with the current stockApiData structure.
+          const variantRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && r.dolibarr_variant_id);
+          if (variantRow) {
+            locVarId = variantRow.local_variant_id;
+            locProdId = variantRow.local_product_id; // variant also has product_id
+          } else {
+            logger.warn({ dlbProdId }, "Base product or variant not found in local DB for stock entry. Skipping warehouse entry.");
+            continue; // Skip this warehouse entry
+          }
+        }
+
+        if (!locProdId && !locVarId) { // Should not happen if above logic is correct
+          logger.warn({ dlbProdId, warehouseId } , "Could not determine local product/variant for stock warehouse entry. Skipping.");
+          continue;
+        }
+
+        const data = transformStockLevel(syntheticEntry, locProdId, locVarId);
           locVarId = varMap.get(dlbVarId);
           if (!locVarId) { logger.warn({dlbVarId}, "Local variant ID not found for Dolibarr variant ID in stock entry. Skipping."); continue; }
           const pRow = prodsRes.rows.find(r => r.local_variant_id === locVarId);
