@@ -218,5 +218,6 @@ async function getProductStock(dolibarrProductId, queryParams = {}) {
   // 3. Stock info might be part of the /products/{dolibarrProductId} response itself.
   // This example assumes a dedicated sub-resource or filterable endpoint.
   // Changed from /stocklevels to /stock based on Swagger spec and 404 errors
+  logger.info({ dolibarrProductId, type: typeof dolibarrProductId }, 'getProductStock called with ID:'); // Diagnostic log
   return request(`/products/${dolibarrProductId}/stock`, {}, queryParams);
 }
