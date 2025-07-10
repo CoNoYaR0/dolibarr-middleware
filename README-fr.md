@@ -1,4 +1,4 @@
-[Français](./README-fr.md)
+[English](./README.md) | [Français](./README-fr.md)
 
 ---
 # Dolibarr Integration Middleware
@@ -194,13 +194,7 @@ This step is crucial after starting the database container for the first time or
 
 The initial synchronization of data from Dolibarr to the middleware's database is currently a manual process.
 1.  **Recommended Method (CLI command):**
-    *   Add the following script to your `dolibarr-middleware/package.json` if not already present:
-        ```json
-        "scripts": {
-          // ... other scripts ...
-          "sync:initial": "node -e \"import('./src/services/syncService.js').then(s => s.default.runInitialSync()).catch(e => { console.error('Initial Sync Failed:', e); process.exit(1); })\""
-        }
-        ```
+    *   The `sync:initial` script is included in `package.json`.
     *   Ensure the application container is running (`docker-compose up`).
     *   Execute the sync from your host machine's terminal:
         ```bash
@@ -217,7 +211,6 @@ The initial synchronization of data from Dolibarr to the middleware's database i
     *   Dolibarr may return a `404 Not Found` for stock requests if a product has zero stock; the middleware logs this and continues.
     *   Timestamps (like `date_creation`, `tms`) from Dolibarr (often Unix timestamps in seconds) are converted to full JavaScript Date objects by the transformation functions in `syncService.js` for database compatibility.
 *   **Field Mappings:** If sync issues persist for specific data types, review the `transform*` functions in `src/services/syncService.js` against your Dolibarr's API responses to ensure correct field mapping.
-*   The `sync:initial` script is included in `package.json`.
 
 ### D. Setting up Dolibarr Webhooks
 
