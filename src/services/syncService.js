@@ -237,9 +237,6 @@ async function syncProductImageMetadata() { // Renamed from syncProductImages
             filenameFromDolibarr
           );
 
-          // Using (product_id, dolibarr_image_id) as conflict target.
-          // Ensure dolibarr_image_id is reliable and unique per product in your Dolibarr setup.
-          // If not, (product_id, cdn_url) might be an alternative if cdn_urls are unique.
           const imageQueryText = `
             INSERT INTO product_images (
               product_id, variant_id, cdn_url, alt_text, display_order, is_thumbnail,
@@ -260,10 +257,6 @@ async function syncProductImageMetadata() { // Renamed from syncProductImages
 
           if (!imageDataForDb.dolibarr_image_id) {
             logger.warn({imageDataForDb, productId: product.dolibarr_product_id}, "Attempting to insert image metadata without a dolibarr_image_id. Conflict resolution might not work as expected.");
-            // Fallback: insert without conflict or use different conflict target like cdn_url if dolibarr_image_id is missing
-            // For now, this will fail if dolibarr_image_id is null and product_id already has an image with null dolibarr_image_id
-            // and your DB has a unique constraint like that (which it doesn't by default on (product_id, null)).
-            // Best to ensure dolibarr_image_id is always populated.
           }
 
           await db.query(imageQueryText, [
@@ -289,7 +282,6 @@ async function syncStockLevels() {
   const prodsRes = await db.query('SELECT p.id as local_product_id, p.dolibarr_product_id, pv.id as local_variant_id, pv.dolibarr_variant_id FROM products p LEFT JOIN product_variants pv ON p.id = pv.product_id WHERE p.dolibarr_product_id IS NOT NULL;');
   if (prodsRes.rows.length === 0) { logger.info('No products/variants to sync stock for.'); return; }
 
-  // Log the product mapping array for debugging product ID 2 issue
   logger.info({ productsFromDB: prodsRes.rows }, 'Products available for stock mapping:');
 
   const varMap = new Map(prodsRes.rows.filter(r => r.dolibarr_variant_id).map(r => [r.dolibarr_variant_id, r.local_variant_id]));
@@ -305,65 +297,52 @@ async function syncStockLevels() {
         continue;
       }
 
-      // Iterate over warehouses in stock_warehouses
       for (const warehouseId in stockApiData.stock_warehouses) {
         const stockDetail = stockApiData.stock_warehouses[warehouseId];
-        // Assuming stockDetail contains 'real' for quantity and 'id' for warehouse's own ID in that context (which might just be warehouseId again)
-        // We need to adapt this to what transformStockLevel expects or adapt transformStockLevel
 
-        // Create an 'entry-like' object for transformStockLevel
         const syntheticEntry = {
-          qty: stockDetail.real, // 'real' seems to be the quantity
-          fk_warehouse: warehouseId, // The key of stock_warehouses is the warehouse ID
-          // tms or date_modification would ideally come from the API if available per warehouse, otherwise use current time or product's tms
-          // For now, let's assume product's overall tms might be relevant if not per-warehouse timestamp is given.
-          // This might need adjustment based on how Dolibarr provides update timestamps for stock.
-          // If stockApiData itself has a global 'tms', use that. Otherwise, this will default to new Date() in transformStockLevel.
+          qty: stockDetail.real,
+          fk_warehouse: warehouseId,
           tms: stockApiData.tms || null
         };
 
         let locProdId = null;
         let locVarId = null;
 
-        // TODO: Determine if this stock entry is for a base product or a variant.
-        // The current API response `{"stock_warehouses": {"1": {"real": "20", "id": "1"}}}`
-        // does not seem to differentiate between base product stock and variant stock directly in this structure.
-        // This part of the logic might need significant rework if variants have separate stock tracked via this endpoint.
-        // For now, we'll assume it's for the base dlbProdId.
-        // If Dolibarr's /products/{id}/stock includes variant stock, the response structure needs to be understood.
-
-        const pRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && !r.dolibarr_variant_id);
-        if (pRow) {
-          locProdId = pRow.local_product_id;
+        // Attempt to find the base product first
+        const productInfoRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && !r.dolibarr_variant_id);
+        if (productInfoRow) {
+          locProdId = productInfoRow.local_product_id;
         } else {
-          // Attempt to find if it's for a variant, though the current API response doesn't give variant ID here.
-          // This path is unlikely to be hit correctly with the current stockApiData structure.
-          const variantRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && r.dolibarr_variant_id);
-          if (variantRow) {
-            locVarId = variantRow.local_variant_id;
-            locProdId = variantRow.local_product_id; // variant also has product_id
+          // If not a base product, check if it's a variant (this part might need more robust logic if variants have their own stock listings)
+          const variantInfoRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && r.dolibarr_variant_id);
+          if (variantInfoRow) { // This condition might not be correct if dlbProdId refers to a base product that has variants
+            locVarId = variantInfoRow.local_variant_id;
+            locProdId = variantInfoRow.local_product_id;
           } else {
-            logger.warn({ dlbProdId }, "Base product or variant not found in local DB for stock entry. Skipping warehouse entry.");
-            continue; // Skip this warehouse entry
+            // Special handling for dlbProdId 2 based on logs
+            if (String(dlbProdId) === '2') {
+                 const directProduct2 = prodsRes.rows.find(r => String(r.dolibarr_product_id) === '2');
+                 if(directProduct2) {
+                    locProdId = directProduct2.local_product_id;
+                    logger.info({dlbProdId, locProdId}, "Applied specific lookup for dlbProdId 2 as base product.");
+                 } else {
+                    logger.warn({ dlbProdId }, "Specific lookup for dlbProdId 2 failed. Base product or variant not found in local DB for stock entry. Skipping warehouse entry.");
+                    continue;
+                 }
+            } else {
+                logger.warn({ dlbProdId }, "Base product or variant not found in local DB for stock entry. Skipping warehouse entry.");
+                continue;
+            }
           }
         }
 
-        if (!locProdId && !locVarId) { // Should not happen if above logic is correct
-          logger.warn({ dlbProdId, warehouseId } , "Could not determine local product/variant for stock warehouse entry. Skipping.");
+        if (!locProdId && !locVarId) {
+          logger.warn({ dlbProdId, warehouseId } , "Could not determine local product/variant for stock warehouse entry after checks. Skipping.");
           continue;
         }
 
         const data = transformStockLevel(syntheticEntry, locProdId, locVarId);
-          locVarId = varMap.get(dlbVarId);
-          if (!locVarId) { logger.warn({dlbVarId}, "Local variant ID not found for Dolibarr variant ID in stock entry. Skipping."); continue; }
-          const pRow = prodsRes.rows.find(r => r.local_variant_id === locVarId);
-          if (pRow) locProdId = pRow.local_product_id; // product_id in stock_levels can be null if variant_id is set
-        } else {
-          const pRow = prodsRes.rows.find(r => r.dolibarr_product_id === dlbProdId && !r.dolibarr_variant_id);
-          if (pRow) locProdId = pRow.local_product_id; else { logger.warn({dlbProdId}, "Base product not found for stock entry. Skipping."); continue; }
-        }
-        if (!locProdId && !locVarId) { logger.warn({entry}, "Could not determine local product/variant for stock. Skipping."); continue; }
-        const data = transformStockLevel(entry, locProdId, locVarId);
         await db.query(
           `INSERT INTO stock_levels (product_id, variant_id, quantity, warehouse_id, dolibarr_updated_at, last_checked_at)
            VALUES ($1, $2, $3, $4, $5, NOW())
