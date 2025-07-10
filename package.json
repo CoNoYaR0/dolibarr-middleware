@@ -12,7 +12,8 @@
     "format": "prettier --write \"**/*.{js,json,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "sync:initial": "node -e \"import('./src/services/syncService.js').then(s => s.default.runInitialSync()).catch(e => { console.error('Initial Sync Failed:', e); process.exit(1); })\""
   },
   "keywords": [
     "dolibarr",
@@ -24,9 +25,8 @@
   "dependencies": {
     "dotenv": "^17.1.0",
     "fastify": "^5.4.0",
-    "@fastify/swagger": "^8.14.0",
+    "@fastify/swagger": "^9.5.1",
     "@fastify/swagger-ui": "^3.0.0",
-
     "@fastify/helmet": "^13.0.1",
     "node-cron": "^3.0.3",
     "pg": "^8.16.3",

@@ -112,7 +112,7 @@ async function getProductById(productId) {
  */
 async function getCategories(queryParams = {}) {
   const defaults = {
-    sortfield: 'c.label',
+    sortfield: 't.label', // Changed from c.label based on "Unknown column 'c.label'" error and Swagger spec
     sortorder: 'ASC',
     limit: 100,
     ...queryParams,
@@ -213,5 +213,6 @@ async function getProductStock(dolibarrProductId, queryParams = {}) {
   // 2. /stocklevels?product_id={dolibarrProductId}
   // 3. Stock info might be part of the /products/{dolibarrProductId} response itself.
   // This example assumes a dedicated sub-resource or filterable endpoint.
-  return request(`/products/${dolibarrProductId}/stocklevels`, {}, queryParams);
+  // Changed from /stocklevels to /stock based on Swagger spec and 404 errors
+  return request(`/products/${dolibarrProductId}/stock`, {}, queryParams);
 }
