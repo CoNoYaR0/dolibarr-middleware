@@ -112,12 +112,16 @@ async function getProductById(productId) {
  */
 async function getCategories(queryParams = {}) {
   const defaults = {
-    sortfield: 't.label', // Changed from c.label based on "Unknown column 'c.label'" error and Swagger spec
-    sortorder: 'ASC',
+    // sortfield: 't.rowid', // Changed from t.label, trying Dolibarr default from Swagger
+    // sortorder: 'ASC', // Corresponding sort order for t.rowid
     limit: 100,
     ...queryParams,
   };
-  return request('/categories', {}, defaults);
+  // Removed sortfield and sortorder to use Dolibarr's absolute default for the endpoint
+  const paramsToPass = { ...defaults };
+  delete paramsToPass.sortfield;
+  delete paramsToPass.sortorder;
+  return request('/categories', {}, paramsToPass);
 }
 
 /**
