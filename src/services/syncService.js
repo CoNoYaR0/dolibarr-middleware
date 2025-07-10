@@ -78,7 +78,6 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
     display_order: parseInt(dolibarrImageInfo.position, 10) || 0,
     is_thumbnail: dolibarrImageInfo.is_thumbnail || false,
     dolibarr_image_id: dolibarrImageInfo.id || dolibarrImageInfo.ref, // Dolibarr's image ID
-    // Store original filename/path from Dolibarr if useful for the external PHP sync script
     original_dolibarr_filename: filenameFromDolibarr,
     original_dolibarr_path: dolibarrImageInfo.path || dolibarrImageInfo.filepath || dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url,
   };
@@ -192,7 +191,7 @@ async function syncProductVariants() {
   logger.info('Product variant synchronization finished.');
 }
 
-async function syncProductImageMetadata() { // Renamed from syncProductImages
+async function syncProductImageMetadata() {
   logger.info('Starting product image metadata synchronization (OVH CDN strategy)...');
   const productsResult = await db.query('SELECT id, dolibarr_product_id FROM products WHERE dolibarr_product_id IS NOT NULL;');
   if (productsResult.rows.length === 0) {
@@ -233,7 +232,7 @@ async function syncProductImageMetadata() { // Renamed from syncProductImages
 
         try {
           const imageDataForDb = transformProductImage(
-            dolibarrImageInfo, product.id, null, /* localVariantId if applicable */
+            dolibarrImageInfo, product.id, null,
             filenameFromDolibarr
           );
 
@@ -284,7 +283,7 @@ async function syncStockLevels() {
 
   logger.info({ productsFromDB: prodsRes.rows }, 'Products available for stock mapping:');
 
-  const varMap = new Map(prodsRes.rows.filter(r => r.dolibarr_variant_id).map(r => [r.dolibarr_variant_id, r.local_variant_id]));
+  // const varMap = new Map(prodsRes.rows.filter(r => r.dolibarr_variant_id).map(r => [r.dolibarr_variant_id, r.local_variant_id])); // Not strictly needed with current stock API structure
   const uniqProdIds = [...new Set(prodsRes.rows.map(r => r.dolibarr_product_id))];
 
   for (const dlbProdId of uniqProdIds) {
@@ -309,36 +308,26 @@ async function syncStockLevels() {
         let locProdId = null;
         let locVarId = null;
 
-        // Attempt to find the base product first
-        const productInfoRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && !r.dolibarr_variant_id);
-        if (productInfoRow) {
-          locProdId = productInfoRow.local_product_id;
-        } else {
-          // If not a base product, check if it's a variant (this part might need more robust logic if variants have their own stock listings)
-          const variantInfoRow = prodsRes.rows.find(r => String(r.dolibarr_product_id) === String(dlbProdId) && r.dolibarr_variant_id);
-          if (variantInfoRow) { // This condition might not be correct if dlbProdId refers to a base product that has variants
-            locVarId = variantInfoRow.local_variant_id;
-            locProdId = variantInfoRow.local_product_id;
-          } else {
-            // Special handling for dlbProdId 2 based on logs
-            if (String(dlbProdId) === '2') {
-                 const directProduct2 = prodsRes.rows.find(r => String(r.dolibarr_product_id) === '2');
-                 if(directProduct2) {
-                    locProdId = directProduct2.local_product_id;
-                    logger.info({dlbProdId, locProdId}, "Applied specific lookup for dlbProdId 2 as base product.");
-                 } else {
-                    logger.warn({ dlbProdId }, "Specific lookup for dlbProdId 2 failed. Base product or variant not found in local DB for stock entry. Skipping warehouse entry.");
-                    continue;
-                 }
-            } else {
-                logger.warn({ dlbProdId }, "Base product or variant not found in local DB for stock entry. Skipping warehouse entry.");
-                continue;
-            }
-          }
-        }
+        // Find the matching local product/variant record for this dlbProdId
+        // This logic assumes dlbProdId from /products/{id}/stock refers to a base product ID.
+        // If a product is a variant, its stock might be reported under its own variant ID or its parent's ID.
+        // The current Dolibarr API for /products/{id}/stock seems to return stock for the given ID,
+        // and doesn't inherently break it down by variant in its primary structure.
+        // We rely on prodsRes to know if dlbProdId corresponds to a base product or a variant product in our system.
 
-        if (!locProdId && !locVarId) {
-          logger.warn({ dlbProdId, warehouseId } , "Could not determine local product/variant for stock warehouse entry after checks. Skipping.");
+        const productRecord = prodsRes.rows.find(
+          r => String(r.dolibarr_product_id) === String(dlbProdId)
+        );
+
+        if (productRecord) {
+          if (productRecord.dolibarr_variant_id) { // It's a variant
+            locVarId = productRecord.local_variant_id;
+            locProdId = productRecord.local_product_id; // Parent's local ID
+          } else { // It's a base product
+            locProdId = productRecord.local_product_id;
+          }
+        } else {
+          logger.warn({ dlbProdId }, "Dolibarr Product ID for stock entry not found in local product/variant map. Skipping warehouse entry.");
           continue;
         }
 
@@ -353,7 +342,11 @@ async function syncStockLevels() {
         );
       }
     } catch (error) {
-      logger.error({ err: error, productId: dlbProdId }, `Error syncing stock`);
+      // If error is 404 from getProductStock, it's already logged by dolibarrApiService.
+      // We only log other unexpected errors here.
+      if (!error.status || error.status !== 404) {
+        logger.error({ err: error, productId: dlbProdId }, `Error processing stock for product`);
+      }
     }
   }
   logger.info('Stock level synchronization finished.');
@@ -366,7 +359,7 @@ async function runInitialSync() {
   await syncCategories();
   await syncProducts();
   await syncProductVariants();
-  await syncProductImageMetadata(); // Renamed
+  await syncProductImageMetadata();
   await syncStockLevels();
   logger.info('=== Full Initial Data Synchronization Finished ===');
 }
@@ -376,9 +369,8 @@ export default {
   syncCategories,
   syncProducts,
   syncProductVariants,
-  syncProductImageMetadata, // Renamed
+  syncProductImageMetadata,
   syncStockLevels,
-  // Exporting transform functions for testing or other potential uses
   transformCategory,
   transformProduct,
   transformVariant,
