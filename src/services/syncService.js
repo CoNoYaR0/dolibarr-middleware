@@ -13,8 +13,8 @@ function transformCategory(dolibarrCategory) {
     name: dolibarrCategory.label || dolibarrCategory.name,
     description: dolibarrCategory.description,
     parent_dolibarr_category_id: dolibarrCategory.fk_parent || dolibarrCategory.parent_id,
-    dolibarr_created_at: dolibarrCategory.date_creation || null,
-    dolibarr_updated_at: dolibarrCategory.tms || null,
+    dolibarr_created_at: dolibarrCategory.date_creation ? new Date(parseInt(dolibarrCategory.date_creation, 10) * 1000) : null,
+    dolibarr_updated_at: dolibarrCategory.tms ? new Date(parseInt(dolibarrCategory.tms, 10) * 1000) : null,
   };
 }
 
@@ -37,8 +37,8 @@ function transformProduct(dolibarrProduct, categoryDolibarrToLocalIdMap) {
     category_id: localCategoryId,
     is_active: !dolibarrProduct.status_tosell || parseInt(dolibarrProduct.status_tosell, 10) === 1,
     slug: dolibarrProduct.ref ? dolibarrProduct.ref.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `product-${dolibarrProduct.id}`,
-    dolibarr_created_at: dolibarrProduct.date_creation || null,
-    dolibarr_updated_at: dolibarrProduct.tms || null,
+    dolibarr_created_at: dolibarrProduct.date_creation ? new Date(parseInt(dolibarrProduct.date_creation, 10) * 1000) : null,
+    dolibarr_updated_at: dolibarrProduct.tms ? new Date(parseInt(dolibarrProduct.tms, 10) * 1000) : null,
   };
 }
 
@@ -59,8 +59,8 @@ function transformVariant(dolibarrVariant, localProductId) {
     sku_variant: dolibarrVariant.ref || `${dolibarrVariant.parent_ref}-var-${dolibarrVariant.id}`,
     price_modifier: parseFloat(dolibarrVariant.price_var) || 0,
     attributes: attributesJson,
-    dolibarr_created_at: dolibarrVariant.date_creation || null,
-    dolibarr_updated_at: dolibarrVariant.tms || null,
+    dolibarr_created_at: dolibarrVariant.date_creation ? new Date(parseInt(dolibarrVariant.date_creation, 10) * 1000) : null,
+    dolibarr_updated_at: dolibarrVariant.tms ? new Date(parseInt(dolibarrVariant.tms, 10) * 1000) : null,
   };
 }
 
@@ -90,7 +90,7 @@ function transformStockLevel(dolibarrStockEntry, localProductId, localVariantId)
     variant_id: localVariantId,
     quantity: parseInt(dolibarrStockEntry.qty || dolibarrStockEntry.stock_reel || 0, 10),
     warehouse_id: dolibarrStockEntry.fk_warehouse || dolibarrStockEntry.warehouse_id || 'default',
-    dolibarr_updated_at: dolibarrStockEntry.tms || dolibarrStockEntry.date_modification || new Date().toISOString(),
+    dolibarr_updated_at: (dolibarrStockEntry.tms || dolibarrStockEntry.date_modification) ? new Date(parseInt(dolibarrStockEntry.tms || dolibarrStockEntry.date_modification, 10) * 1000) : new Date(),
   };
 }
 
