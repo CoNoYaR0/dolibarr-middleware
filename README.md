@@ -207,7 +207,14 @@ The initial synchronization of data from Dolibarr to the middleware's database i
     ```bash
     docker-compose logs -f app
     ```
-**Important:** During the first sync, you will likely encounter issues if the field names in the `transform*` functions within `src/services/syncService.js` or the API endpoints in `src/services/dolibarrApiService.js` do not perfectly match your Dolibarr instance's API responses. You will need to debug these by inspecting logs and Dolibarr API output, then adjust the code.
+**Important Notes for Initial Sync:**
+*   **API Key Permissions:** Ensure the `DOLIBARR_API_KEY` used has comprehensive **read permissions** in your Dolibarr admin panel for all modules you intend to sync (Categories, Products, Product Variants, Stock, etc.). Access to one endpoint (e.g., `/thirdparties`) does not guarantee access to all.
+*   **Dolibarr Version Compatibility (e.g., v18.0.4):**
+    *   API endpoint paths and parameters might differ slightly between Dolibarr versions. This middleware has been tested and adjusted for certain behaviors observed with Dolibarr v18.0.4 (e.g., using `/products/{id}/stock` for stock, default sorting for categories). Users with other versions should carefully verify endpoint paths in `src/services/dolibarrApiService.js` and field mappings in `src/services/syncService.js`.
+    *   Dolibarr may return a `404 Not Found` for stock requests if a product has zero stock; the middleware logs this and continues.
+    *   Timestamps (like `date_creation`, `tms`) from Dolibarr (often Unix timestamps in seconds) are converted to full JavaScript Date objects by the transformation functions in `syncService.js` for database compatibility.
+*   **Field Mappings:** If sync issues persist for specific data types, review the `transform*` functions in `src/services/syncService.js` against your Dolibarr's API responses to ensure correct field mapping.
+*   The `sync:initial` script is included in `package.json`.
 
 ### D. Setting up Dolibarr Webhooks
 
@@ -233,7 +240,9 @@ Refer to the "Webhook Setup in Dolibarr" section in the previous `README.md` con
 
 ## 8. Known Limitations & Technical Debt
 
--   **Dolibarr API Specificity:** Many parts of `dolibarrApiService.js` and `syncService.js` (especially transform functions and API endpoint paths for variants, images, stock) use placeholders or common assumptions. These **must be verified and adapted** to the specific version and module configuration of the target Dolibarr instance.
+-   **Dolibarr API Specificity & Versioning:**
+    *   While core API interaction has been refined (e.g., for Dolibarr v18.0.4, adjustments made for category sorting defaults, the `/products/{id}/stock` endpoint, and Unix timestamp conversions), users **must verify and adapt** API endpoint paths in `dolibarrApiService.js` and field mappings in `transform*` functions within `src/services/syncService.js` for their specific Dolibarr version and module configuration.
+    *   Dolibarr's behavior for specific scenarios (e.g., returning `404 Not Found` for stock requests if a product has zero stock) is handled by the middleware but should be noted.
 -   **Webhook Payload Parsing:** The webhook handler in `webhookRoutes.js` has placeholder logic for parsing event type and entity ID. This **requires significant adaptation** based on actual Dolibarr webhook payloads.
 -   **Image File Synchronization:** This middleware only handles image *metadata* and URL construction for an OVH-based CDN. The actual placement of image files onto the CDN server relies on an **external script (not included in this project)** that needs to be developed and managed separately on the OVH server.
 -   **Database Migrations:** Currently manual (running `.sql` files). A proper migration tool (`node-pg-migrate`, `Knex.js`, etc.) should be integrated for schema versioning and easier management.
@@ -249,10 +258,15 @@ Refer to the "Webhook Setup in Dolibarr" section in the previous `README.md` con
 
 ## 9. Roadmap & Next Steps (Pending Tasks)
 
-1.  **CRITICAL: Dolibarr API Adaptation & Testing:**
-    *   Verify and adapt all Dolibarr API endpoint paths in `dolibarrApiService.js`.
-    *   Verify and adapt all field mappings in `transform*` functions within `syncService.js` by inspecting actual Dolibarr API responses.
-    *   Thoroughly test the `runInitialSync` process with a real or staging Dolibarr instance. Debug and fix data mapping issues.
+1.  **Dolibarr API Adaptation & Testing (Partially Addressed for v18.0.4):**
+    *   **Completed for v18.0.4 initial sync:**
+        *   Category fetching defaults (sorting).
+        *   Product stock endpoint corrected to `/products/{id}/stock`.
+        *   Transformation functions in `syncService.js` updated to handle Unix timestamps for date fields (`date_creation`, `tms`, `date_modification`).
+    *   **Still Requires per-instance/version verification:**
+        *   Verify and adapt other Dolibarr API endpoint paths in `dolibarrApiService.js` (e.g., for product variants if issues arise).
+        *   Verify and adapt all field mappings in `transform*` functions within `src/services/syncService.js` by inspecting actual Dolibarr API responses for your specific setup and version.
+    *   Thoroughly test the `runInitialSync` process with your specific Dolibarr instance.
 2.  **CRITICAL: Webhook Implementation & Testing:**
     *   Configure webhooks in Dolibarr.
     *   Inspect the exact JSON payload structure for each relevant event.
