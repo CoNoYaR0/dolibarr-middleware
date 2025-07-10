@@ -293,8 +293,15 @@ async function syncStockLevels() {
   for (const dlbProdId of uniqProdIds) {
     try {
       const stockApiData = await dolibarrApi.getProductStock(dlbProdId);
+      // Log the raw API response for this product ID
+      logger.info({ dlbProdId, stockApiDataFromDolibarr: stockApiData }, 'Raw stock API data received:');
+
       const entries = Array.isArray(stockApiData) ? stockApiData : (stockApiData ? [stockApiData] : []);
-      if (entries.length === 0) continue;
+      if (entries.length === 0) {
+        // Also log if entries array is empty after processing stockApiData
+        logger.info({ dlbProdId, processedEntries: entries }, 'No processable stock entries found after parsing API data.');
+        continue;
+      }
       for (const entry of entries) {
         let locProdId = null; let locVarId = null;
         if (entry.fk_product_fils || entry.variant_id) {
