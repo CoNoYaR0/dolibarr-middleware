@@ -1,8 +1,7 @@
 import dolibarrApi from './dolibarrApiService.js';
 import db from './dbService.js';
 import config from '../config/index.js';
-// import s3Service from './s3Service.js'; // No longer needed for OVH strategy
-import path from 'path'; // Still useful for filename extraction
+import path from 'path';
 import logger from '../utils/logger.js';
 
 // --- Transformation Functions ---
@@ -18,15 +17,7 @@ function transformCategory(dolibarrCategory) {
   };
 }
 
-function transformProduct(dolibarrProduct, categoryDolibarrToLocalIdMap) {
-  let localCategoryId = null;
-  if (dolibarrProduct.fk_categorie || dolibarrProduct.category_id) {
-    const dolibarrCatId = parseInt(dolibarrProduct.fk_categorie || dolibarrProduct.category_id, 10);
-    localCategoryId = categoryDolibarrToLocalIdMap.get(dolibarrCatId);
-    if (!localCategoryId) {
-      logger.warn({ dolibarrCatId, productId: dolibarrProduct.ref }, `Local category ID not found for Dolibarr category ID`);
-    }
-  }
+function transformProduct(dolibarrProduct) { // categoryDolibarrToLocalIdMap no longer needed here
   return {
     dolibarr_product_id: dolibarrProduct.id,
     sku: dolibarrProduct.ref,
@@ -34,7 +25,7 @@ function transformProduct(dolibarrProduct, categoryDolibarrToLocalIdMap) {
     description: dolibarrProduct.description,
     long_description: dolibarrProduct.note_public || dolibarrProduct.long_description,
     price: parseFloat(dolibarrProduct.price) || 0,
-    category_id: localCategoryId,
+    // category_id removed - will be handled by product_categories_map
     is_active: !dolibarrProduct.status_tosell || parseInt(dolibarrProduct.status_tosell, 10) === 1,
     slug: dolibarrProduct.ref ? dolibarrProduct.ref.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `product-${dolibarrProduct.id}`,
     dolibarr_created_at: dolibarrProduct.date_creation ? new Date(parseInt(dolibarrProduct.date_creation, 10) * 1000) : null,
@@ -66,18 +57,17 @@ function transformVariant(dolibarrVariant, localProductId) {
 
 function transformProductImage(dolibarrImageInfo, localProductId, localVariantId, filenameFromDolibarr) {
   const sanitizedFilename = (filenameFromDolibarr || `placeholder_image_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
-  const cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`; // config.cdn.baseUrl should end with a '/'
-
+  const cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
   return {
     product_id: localProductId,
     variant_id: localVariantId,
-    s3_bucket: null, // Not used
-    s3_key: null,    // Not used
+    s3_bucket: null,
+    s3_key: null,
     cdn_url: cdnUrl,
     alt_text: dolibarrImageInfo.alt || dolibarrImageInfo.label || sanitizedFilename,
     display_order: parseInt(dolibarrImageInfo.position, 10) || 0,
     is_thumbnail: dolibarrImageInfo.is_thumbnail || false,
-    dolibarr_image_id: dolibarrImageInfo.id || dolibarrImageInfo.ref, // Dolibarr's image ID
+    dolibarr_image_id: dolibarrImageInfo.id || dolibarrImageInfo.ref,
     original_dolibarr_filename: filenameFromDolibarr,
     original_dolibarr_path: dolibarrImageInfo.path || dolibarrImageInfo.filepath || dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url,
   };
@@ -130,7 +120,7 @@ async function syncCategories() {
 async function syncProducts() {
   logger.info('Starting product synchronization...');
   const catMapRes = await db.query('SELECT dolibarr_category_id, id FROM categories WHERE dolibarr_category_id IS NOT NULL;');
-  const catMap = new Map(catMapRes.rows.map(r => [parseInt(r.dolibarr_category_id, 10), r.id])); // Ensure key is number
+  const catMap = new Map(catMapRes.rows.map(r => [parseInt(r.dolibarr_category_id, 10), r.id]));
   logger.info({ catMapContent: Array.from(catMap.entries()) }, 'Category map created:');
   let allProducts = [];
   let currentPage = 0;
@@ -146,48 +136,52 @@ async function syncProducts() {
     }
     logger.info(`Fetched ${allProducts.length} products.`);
     for (const dolibarrProductData of allProducts) {
-      // Log raw product category fields
       logger.info({ productId: dolibarrProductData.id, ref: dolibarrProductData.ref, fk_categorie: dolibarrProductData.fk_categorie, api_category_id: dolibarrProductData.category_id }, 'Raw product category fields from API:');
 
-      // Initial product data insertion (without category_id from this payload)
-      const productToInsert = transformProduct(dolibarrProductData, catMap); // catMap might not be useful here anymore for direct linking
+      const productToInsert = transformProduct(dolibarrProductData); // Pass only dolibarrProductData
       if (!productToInsert.dolibarr_product_id) continue;
 
       const { rows: insertedProductRows } = await db.query(
-        `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, category_id, is_active, slug, dolibarr_created_at, dolibarr_updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, is_active, slug, dolibarr_created_at, dolibarr_updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (dolibarr_product_id) DO UPDATE SET
            sku = EXCLUDED.sku, name = EXCLUDED.name, description = EXCLUDED.description, long_description = EXCLUDED.long_description,
-           price = EXCLUDED.price, /* category_id will be updated in the next step */ is_active = EXCLUDED.is_active, slug = EXCLUDED.slug,
+           price = EXCLUDED.price, is_active = EXCLUDED.is_active, slug = EXCLUDED.slug,
            dolibarr_created_at = EXCLUDED.dolibarr_created_at, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()
-         RETURNING id, dolibarr_product_id;`, // Return local id and dolibarr_product_id
-        [productToInsert.dolibarr_product_id, productToInsert.sku, productToInsert.name, productToInsert.description, productToInsert.long_description, productToInsert.price, null /* initially null */, productToInsert.is_active, productToInsert.slug, productToInsert.dolibarr_created_at, productToInsert.dolibarr_updated_at]
+         RETURNING id, dolibarr_product_id;`,
+        [productToInsert.dolibarr_product_id, productToInsert.sku, productToInsert.name, productToInsert.description, productToInsert.long_description, productToInsert.price, productToInsert.is_active, productToInsert.slug, productToInsert.dolibarr_created_at, productToInsert.dolibarr_updated_at]
       );
 
       if (insertedProductRows && insertedProductRows.length > 0) {
         const localProductId = insertedProductRows[0].id;
         const currentDolibarrProductId = insertedProductRows[0].dolibarr_product_id;
 
-        // Now fetch categories for this product
+        await db.query('DELETE FROM product_categories_map WHERE product_id = $1', [localProductId]);
+        logger.info({ localProductId }, `Cleared existing category links for product.`);
+
         try {
           const productCategoriesArray = await dolibarrApi.getProductCategories(currentDolibarrProductId);
+          logger.info({ productId: currentDolibarrProductId, fetchedCategories: productCategoriesArray }, 'Categories fetched for product:');
+
           if (productCategoriesArray && productCategoriesArray.length > 0) {
-            // Assuming a product is primarily in one category for this middleware, or take the first one.
-            // The API might return multiple. Here, we take the first one found.
-            const productDolibarrCategory = productCategoriesArray[0];
-            if (productDolibarrCategory && productDolibarrCategory.id) {
-              const localCatId = catMap.get(parseInt(productDolibarrCategory.id, 10));
-              if (localCatId) {
-                await db.query('UPDATE products SET category_id = $1 WHERE id = $2', [localCatId, localProductId]);
-                logger.info({ productId: currentDolibarrProductId, localProductId, categoryId: productDolibarrCategory.id, localCatId }, 'Linked product to category.');
+            for (const productDolibarrCategory of productCategoriesArray) {
+              if (productDolibarrCategory && productDolibarrCategory.id) {
+                const localCatId = catMap.get(parseInt(productDolibarrCategory.id, 10));
+                if (localCatId) {
+                  await db.query(
+                    'INSERT INTO product_categories_map (product_id, category_id) VALUES ($1, $2) ON CONFLICT (product_id, category_id) DO NOTHING',
+                    [localProductId, localCatId]
+                  );
+                  logger.info({ productId: currentDolibarrProductId, localProductId, dolibarrCategoryId: productDolibarrCategory.id, localCategoryId: localCatId }, 'Linked product to category in map table.');
+                } else {
+                  logger.warn({ productId: currentDolibarrProductId, dolibarrCategoryId: productDolibarrCategory.id }, 'Local category mapping not found for product category.');
+                }
               } else {
-                logger.warn({ productId: currentDolibarrProductId, categoryId: productDolibarrCategory.id }, 'Local category mapping not found for product category.');
+                logger.info({ productId: currentDolibarrProductId, categoryItem: productDolibarrCategory }, 'No valid category ID found in productCategoriesArray item.');
               }
-            } else {
-              logger.info({ productId: currentDolibarrProductId }, 'No category ID found in productCategoriesArray item.');
             }
           } else {
-            logger.info({ productId: currentDolibarrProductId }, 'No categories returned by getProductCategories.');
+            logger.info({ productId: currentDolibarrProductId }, 'No categories returned by getProductCategories for this product.');
           }
         } catch (catError) {
           logger.error({ err: catError, productId: currentDolibarrProductId }, `Error fetching or linking categories for product.`);
@@ -320,7 +314,6 @@ async function syncStockLevels() {
 
   logger.info({ productsFromDB: prodsRes.rows }, 'Products available for stock mapping:');
 
-  // const varMap = new Map(prodsRes.rows.filter(r => r.dolibarr_variant_id).map(r => [r.dolibarr_variant_id, r.local_variant_id])); // Not strictly needed with current stock API structure
   const uniqProdIds = [...new Set(prodsRes.rows.map(r => r.dolibarr_product_id))];
 
   for (const dlbProdId of uniqProdIds) {
@@ -345,22 +338,15 @@ async function syncStockLevels() {
         let locProdId = null;
         let locVarId = null;
 
-        // Find the matching local product/variant record for this dlbProdId
-        // This logic assumes dlbProdId from /products/{id}/stock refers to a base product ID.
-        // If a product is a variant, its stock might be reported under its own variant ID or its parent's ID.
-        // The current Dolibarr API for /products/{id}/stock seems to return stock for the given ID,
-        // and doesn't inherently break it down by variant in its primary structure.
-        // We rely on prodsRes to know if dlbProdId corresponds to a base product or a variant product in our system.
-
         const productRecord = prodsRes.rows.find(
           r => String(r.dolibarr_product_id) === String(dlbProdId)
         );
 
         if (productRecord) {
-          if (productRecord.dolibarr_variant_id) { // It's a variant
+          if (productRecord.dolibarr_variant_id) {
             locVarId = productRecord.local_variant_id;
-            locProdId = productRecord.local_product_id; // Parent's local ID
-          } else { // It's a base product
+            locProdId = productRecord.local_product_id;
+          } else {
             locProdId = productRecord.local_product_id;
           }
         } else {
@@ -379,8 +365,6 @@ async function syncStockLevels() {
         );
       }
     } catch (error) {
-      // If error is 404 from getProductStock, it's already logged by dolibarrApiService.
-      // We only log other unexpected errors here.
       if (!error.status || error.status !== 404) {
         logger.error({ err: error, productId: dlbProdId }, `Error processing stock for product`);
       }

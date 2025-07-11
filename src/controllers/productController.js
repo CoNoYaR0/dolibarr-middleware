@@ -19,42 +19,56 @@ async function listProducts(request, reply) {
   const sortByColumn = validSortColumns.includes(sort_by.toLowerCase()) ? sort_by.toLowerCase() : 'name';
 
 
-  let queryText = `
+  let queryBase = `
+    FROM products p
+  `;
+  let querySelect = `
     SELECT
       p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.price, p.slug, p.is_active,
-      c.name as category_name,
       -- Aggregate images (example: get first image as thumbnail_url)
       (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url
-    FROM products p
-    LEFT JOIN categories c ON p.category_id = c.id
   `;
+
   const queryParams = [];
   let paramIndex = 1;
   const conditions = [];
+  let joins = '';
 
   if (category_id) {
-    conditions.push(`p.category_id = $${paramIndex++}`);
+    // Join with the mapping table to filter by category
+    joins += ` INNER JOIN product_categories_map pcm ON p.id = pcm.product_id`;
+    conditions.push(`pcm.category_id = $${paramIndex++}`);
     queryParams.push(parseInt(category_id, 10));
   }
 
-  // Add more conditions for other filters here
+  // Add more conditions for other filters here (e.g., is_active = true)
+  // conditions.push(`p.is_active = TRUE`); // Example: always filter for active products
 
+  let whereClause = '';
   if (conditions.length > 0) {
-    queryText += ` WHERE ${conditions.join(' AND ')}`;
+    whereClause = ` WHERE ${conditions.join(' AND ')}`;
   }
 
   // Count total products for pagination (matching filters)
-  let countQueryText = `SELECT COUNT(*) FROM products p`;
-  if (conditions.length > 0) {
-    countQueryText += ` WHERE ${conditions.join(' AND ').replace(/p\.category_id/g, 'category_id')}`; // Adjust for alias if needed
+  // For COUNT, we need to be careful if category_id filter makes the count distinct per product
+  let countQueryText;
+  if (category_id) {
+    // If filtering by category, count distinct products that match
+    countQueryText = `SELECT COUNT(DISTINCT p.id) ${queryBase} ${joins} ${whereClause}`;
+  } else {
+    countQueryText = `SELECT COUNT(p.id) ${queryBase} ${joins} ${whereClause}`;
   }
 
-  queryText += ` ORDER BY p.${sortByColumn} ${order.toUpperCase()} LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
+  const queryParamsForCount = [...queryParams]; // queryParams for count might be different if limit/offset are not needed
+
+  let queryText = `${querySelect} ${queryBase} ${joins} ${whereClause} ORDER BY p.${sortByColumn} ${order.toUpperCase()} LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
   queryParams.push(parseInt(limit, 10), offset);
+
+  request.log.debug({ queryText, queryParams, countQueryText, queryParamsForCount }, 'List products query');
 
   try {
     const { rows: products } = await db.query(queryText, queryParams);
-    const { rows: countResult } = await db.query(countQueryText, queryParams.slice(0, conditions.length)); // Only filter params for count
+    const { rows: countResult } = await db.query(countQueryText, queryParamsForCount);
 
     const totalProducts = parseInt(countResult[0].count, 10);
     const totalPages = Math.ceil(totalProducts / parseInt(limit, 10));
@@ -119,9 +133,20 @@ async function getProductBySlug(request, reply) {
     `;
     const { rows: stockLevels } = await db.query(stockQuery, [product.id]);
 
+    // 5. Fetch associated categories
+    const categoriesQuery = `
+      SELECT c.id, c.dolibarr_category_id, c.name, c.description /* add other category fields as needed, e.g., slug */
+      FROM product_categories_map pcm
+      JOIN categories c ON pcm.category_id = c.id
+      WHERE pcm.product_id = $1
+      ORDER BY c.name;
+    `;
+    const { rows: productCategories } = await db.query(categoriesQuery, [product.id]);
+
     // Structure the response
     const response = {
       ...product,
+      categories: productCategories, // Add categories to the response
       variants: variants.map(v => ({
         ...v,
         images: images.filter(img => img.variant_id === v.id), // Attach variant-specific images
