@@ -145,20 +145,54 @@ async function syncProducts() {
       currentPage++;
     }
     logger.info(`Fetched ${allProducts.length} products.`);
-    for (const item of allProducts) {
+    for (const dolibarrProductData of allProducts) {
       // Log raw product category fields
-      logger.info({ productId: item.id, ref: item.ref, fk_categorie: item.fk_categorie, api_category_id: item.category_id }, 'Raw product category fields from API:');
-      const data = transformProduct(item, catMap);
-      if (!data.dolibarr_product_id) continue;
-      await db.query(
+      logger.info({ productId: dolibarrProductData.id, ref: dolibarrProductData.ref, fk_categorie: dolibarrProductData.fk_categorie, api_category_id: dolibarrProductData.category_id }, 'Raw product category fields from API:');
+
+      // Initial product data insertion (without category_id from this payload)
+      const productToInsert = transformProduct(dolibarrProductData, catMap); // catMap might not be useful here anymore for direct linking
+      if (!productToInsert.dolibarr_product_id) continue;
+
+      const { rows: insertedProductRows } = await db.query(
         `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, category_id, is_active, slug, dolibarr_created_at, dolibarr_updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (dolibarr_product_id) DO UPDATE SET
            sku = EXCLUDED.sku, name = EXCLUDED.name, description = EXCLUDED.description, long_description = EXCLUDED.long_description,
-           price = EXCLUDED.price, category_id = EXCLUDED.category_id, is_active = EXCLUDED.is_active, slug = EXCLUDED.slug,
-           dolibarr_created_at = EXCLUDED.dolibarr_created_at, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()`,
-        [data.dolibarr_product_id, data.sku, data.name, data.description, data.long_description, data.price, data.category_id, data.is_active, data.slug, data.dolibarr_created_at, data.dolibarr_updated_at]
+           price = EXCLUDED.price, /* category_id will be updated in the next step */ is_active = EXCLUDED.is_active, slug = EXCLUDED.slug,
+           dolibarr_created_at = EXCLUDED.dolibarr_created_at, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()
+         RETURNING id, dolibarr_product_id;`, // Return local id and dolibarr_product_id
+        [productToInsert.dolibarr_product_id, productToInsert.sku, productToInsert.name, productToInsert.description, productToInsert.long_description, productToInsert.price, null /* initially null */, productToInsert.is_active, productToInsert.slug, productToInsert.dolibarr_created_at, productToInsert.dolibarr_updated_at]
       );
+
+      if (insertedProductRows && insertedProductRows.length > 0) {
+        const localProductId = insertedProductRows[0].id;
+        const currentDolibarrProductId = insertedProductRows[0].dolibarr_product_id;
+
+        // Now fetch categories for this product
+        try {
+          const productCategoriesArray = await dolibarrApi.getProductCategories(currentDolibarrProductId);
+          if (productCategoriesArray && productCategoriesArray.length > 0) {
+            // Assuming a product is primarily in one category for this middleware, or take the first one.
+            // The API might return multiple. Here, we take the first one found.
+            const productDolibarrCategory = productCategoriesArray[0];
+            if (productDolibarrCategory && productDolibarrCategory.id) {
+              const localCatId = catMap.get(parseInt(productDolibarrCategory.id, 10));
+              if (localCatId) {
+                await db.query('UPDATE products SET category_id = $1 WHERE id = $2', [localCatId, localProductId]);
+                logger.info({ productId: currentDolibarrProductId, localProductId, categoryId: productDolibarrCategory.id, localCatId }, 'Linked product to category.');
+              } else {
+                logger.warn({ productId: currentDolibarrProductId, categoryId: productDolibarrCategory.id }, 'Local category mapping not found for product category.');
+              }
+            } else {
+              logger.info({ productId: currentDolibarrProductId }, 'No category ID found in productCategoriesArray item.');
+            }
+          } else {
+            logger.info({ productId: currentDolibarrProductId }, 'No categories returned by getProductCategories.');
+          }
+        } catch (catError) {
+          logger.error({ err: catError, productId: currentDolibarrProductId }, `Error fetching or linking categories for product.`);
+        }
+      }
     }
     logger.info('Product synchronization finished.');
   } catch (error) {

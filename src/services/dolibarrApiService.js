@@ -161,7 +161,7 @@ export default {
   getCategoryById,
   getProductVariants,
   getProductStock, // Added getProductStock
-  // rawRequest: request // Expose raw request if complex calls are needed elsewhere
+  getProductCategories, // Added getProductCategories
 
   /**
    * Fetches a file (e.g., an image) from a given URL.
@@ -220,4 +220,16 @@ async function getProductStock(dolibarrProductId, queryParams = {}) {
   // Changed from /stocklevels to /stock based on Swagger spec and 404 errors
   logger.info({ dolibarrProductId, type: typeof dolibarrProductId }, 'getProductStock called with ID:'); // Diagnostic log
   return request(`/products/${dolibarrProductId}/stock`, {}, queryParams);
+}
+
+/**
+ * Fetches the categories for a given product.
+ * @param {number|string} dolibarrProductId - The ID of the product.
+ * @returns {Promise<Array<any>>} A list of categories the product belongs to.
+ */
+async function getProductCategories(dolibarrProductId) {
+  // Endpoint based on Dolibarr Swagger: /categories/object/{type}/{id}
+  // where type is 'product'
+  logger.info({ dolibarrProductId }, 'getProductCategories called for product ID:');
+  return request(`/categories/object/product/${dolibarrProductId}`);
 }
