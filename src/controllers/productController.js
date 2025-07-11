@@ -153,9 +153,9 @@ async function getProductBySlug(request, reply) {
         stock: stockLevels.filter(s => s.variant_id === v.id) // Attach variant-specific stock
       })),
       // Base product images (not tied to a specific variant)
-      base_images: images.filter(img => img.product_id === product.id && img.variant_id IS NULL),
+      base_images: images.filter(img => img.product_id === product.id && img.variant_id === null),
       // Base product stock (if stock can be for base product without variants, or as an aggregate)
-      base_stock: stockLevels.filter(s => s.product_id === product.id && s.variant_id IS NULL),
+      base_stock: stockLevels.filter(s => s.product_id === product.id && s.variant_id === null),
     };
     // A more sophisticated approach for stock might pre-aggregate it or provide a clearer structure.
     // For example, a total stock for the product, and then stock per variant.
