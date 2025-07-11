@@ -32,10 +32,19 @@
     -   Handles API key authentication and request timeouts.
 -   **Webhook Handling (`webhookRoutes.js`):**
     -   Proof-of-concept endpoint (`/webhooks/dolibarr`) to receive webhooks from Dolibarr.
-    -   Basic secret key validation.
-    -   **Placeholder logic requiring significant adaptation based on actual Dolibarr webhook payloads.**
+    -   Endpoint `POST /webhooks/webhook` to receive and process webhooks from Dolibarr.
+    -   Secret key validation using `DOLIBARR_WEBHOOK_SECRET` environment variable (expects `X-Dolibarr-Webhook-Secret` header from Dolibarr - *actual header name may vary, confirm with your Dolibarr setup*).
+    -   Supported events:
+        -   `PRODUCT_CREATE`: Creates product, links categories, syncs variants and stock.
+        -   `PRODUCT_MODIFY`: Updates product, re-links categories, re-syncs variants and stock.
+        -   `PRODUCT_DELETE`: Deletes product and associated data (variants, stock, category links, images).
+        -   `CATEGORY_CREATE`: Creates category, resolving parent-child relationships.
+        -   `CATEGORY_MODIFY`: Updates category, including parent-child relationships.
+        -   `CATEGORY_DELETE`: Deletes category (links from products are removed; child categories become top-level if `parent_id` FK schema update is applied).
+        -   `STOCK_MOVEMENT`: Triggers a full stock re-sync for the affected product from Dolibarr.
+    -   Asynchronous processing of webhooks to ensure quick response to Dolibarr.
 -   **Polling Service (`pollingService.js`):**
-    -   Cron-based polling for periodic data synchronization (currently for stock levels).
+    -   Cron-based polling for periodic data synchronization (can complement webhooks or act as a fallback).
 -   **RESTful API (`apiRoutes.js`, Controllers):**
     -   `GET /api/v1/categories`: List all categories.
     -   `GET /api/v1/products`: List products with pagination, sorting, and filtering by a single `category_id` (leveraging the many-to-many relationship).
@@ -98,6 +107,14 @@ Execute the SQL migration files from the `migrations/` directory in order:
     *   `migrations/001_initial_schema.sql`
     *   `migrations/002_update_product_images_for_ovh_cdn.sql`
     *   `migrations/003_product_many_to_many_categories.sql`
+    *   **Important for Webhooks:** A migration to add `parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL` to the `categories` table is crucial for correct hierarchical updates when parent categories are deleted via webhooks. If not already present, this should be added. Example:
+        ```sql
+        -- Migration: 004_add_parent_id_fk_to_categories.sql (example name)
+        BEGIN;
+        ALTER TABLE categories ADD COLUMN IF NOT EXISTS parent_id INTEGER DEFAULT NULL;
+        ALTER TABLE categories ADD CONSTRAINT fk_categories_parent_id FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL;
+        COMMIT;
+        ```
     *(And any subsequent migration files)*
     *Example using `psql` (if installed locally):*
     ```bash
@@ -107,11 +124,36 @@ Execute the SQL migration files from the `migrations/` directory in order:
     ```
 
 ### C. Triggering Initial Data Sync
-The `sync:initial` script in `package.json` triggers the full data synchronization.
+The `sync:initial` script in `package.json` triggers the full data synchronization. This is important to run before enabling webhooks to ensure the local database has a baseline.
 ```bash
 docker-compose exec app npm run sync:initial
 ```
-**Important Notes for Initial Sync:**
+
+### D. Configuring Dolibarr Webhooks (New Section)
+To enable real-time updates, configure webhooks in your Dolibarr instance:
+1.  **Access Webhook Module:** Navigate to the Webhooks module in Dolibarr (e.g., Setup -> Modules/Applications -> Webhooks).
+2.  **Create Webhooks:** For each of the following events, create a new webhook:
+    *   `PRODUCT_CREATE`
+    *   `PRODUCT_MODIFY`
+    *   `PRODUCT_DELETE`
+    *   `CATEGORY_CREATE`
+    *   `CATEGORY_MODIFY`
+    *   `CATEGORY_DELETE`
+    *   `STOCK_MOVEMENT` (Covers various stock operations including inventory changes, shipments, etc.)
+3.  **Target URL:** Set the "URL to notify" for each webhook to:
+    `http://<your_middleware_host>:<your_middleware_port>/webhooks/webhook`
+    (Replace `<your_middleware_host>` and `<your_middleware_port>` with the actual host and port where this middleware application is accessible from your Dolibarr server).
+4.  **HTTP Method:** Ensure the method is `POST`.
+5.  **Secret (Optional but Recommended):**
+    *   If you have set the `DOLIBARR_WEBHOOK_SECRET` environment variable for this middleware, generate a strong secret string.
+    *   In Dolibarr's webhook configuration, there should be an option to add a custom HTTP header. Add a header like:
+        *   Header Name: `X-Dolibarr-Webhook-Secret` (Note: The exact header name Dolibarr allows you to configure or sends by default for a secret might vary. Please verify this in your Dolibarr version. This is the header the middleware currently expects.)
+        *   Header Value: Your chosen secret string.
+    *   Ensure the "Type of content" is `application/json`.
+6.  **Encoding:** Usually `UTF-8`.
+7.  **Activate:** Ensure each webhook is active.
+
+**Important Notes for Initial Sync & Webhooks:**
 *   **API Key Permissions:** Essential for all relevant Dolibarr modules (Categories, Products, Stock, etc.).
 *   **Dolibarr Version Compatibility (Tested with v18.0.4):**
     *   API interactions (endpoints, parameters like category sorting, stock endpoint `/products/{id}/stock`, fetching product categories via `/categories/object/product/{id}`) have been adapted for v18.0.4. Users of other versions must verify these in `dolibarrApiService.js` and field mappings in `syncService.js`.
@@ -139,9 +181,11 @@ docker-compose exec app npm run sync:initial
         *   Transformation functions updated for Unix timestamps.
     *   **Ongoing Verification Needed:** Users should always test with their specific Dolibarr setup and version, especially for less common data or if variants/other modules have complex API responses.
 2.  **CRITICAL: Webhook Implementation & Testing:** (No change - still a top priority)
-    *   ...
-3.  **Develop External Image Sync Script for OVH:** (No change)
-4.  **Integrate a Database Migration Tool:** (No change)
+    *   The middleware now processes these webhooks to update its local database.
+3.  **Schema Update for Category Hierarchy:**
+    *   Apply the migration to add `parent_id` with `ON DELETE SET NULL` to the `categories` table to ensure correct behavior when parent categories are deleted.
+4.  **Develop External Image Sync Script for OVH:** (No change)
+5.  **Integrate a Database Migration Tool:** (No change)
 5.  **Enhance Test Coverage:** (No change)
 6.  **Refine API Features:**
     *   Product listing `GET /api/v1/products` now supports filtering by a single `category_id` using the many-to-many relationship.

@@ -49,6 +49,163 @@ async function getAllCategories(request, reply) {
 
 // Add other category-related controller functions here if needed (e.g., getCategoryBySlugOrId)
 
+/**
+ * Get a single category by its local primary key ID.
+ * @param {number} id - The local primary key ID of the category.
+ * @param {object} logger - Optional logger instance.
+ */
+async function getCategoryById(id, logger = console) {
+  try {
+    const queryText = `
+      SELECT id, name, description, dolibarr_category_id, parent_id, parent_dolibarr_category_id,
+             created_at, updated_at, dolibarr_created_at, dolibarr_updated_at
+      FROM categories
+      WHERE id = $1;
+    `;
+    const { rows } = await db.query(queryText, [id]);
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger)({ err: error, categoryId: id }, 'Error in getCategoryById');
+    throw error;
+  }
+}
+
+/**
+ * Get a single category by its Dolibarr ID.
+ * @param {string|number} dolibarrId - The Dolibarr ID of the category.
+ * @param {object} logger - Optional logger instance.
+ */
+async function getCategoryByDolibarrId(dolibarrId, logger = console) {
+  try {
+    const queryText = `
+      SELECT id, name, description, dolibarr_category_id, parent_id, parent_dolibarr_category_id,
+             created_at, updated_at, dolibarr_created_at, dolibarr_updated_at
+      FROM categories
+      WHERE dolibarr_category_id = $1;
+    `;
+    const { rows } = await db.query(queryText, [dolibarrId]);
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger)({ err: error, dolibarrCategoryId: dolibarrId }, 'Error in getCategoryByDolibarrId');
+    throw error;
+  }
+}
+
+/**
+ * Add a new category to the database.
+ * @param {object} categoryPayload - Data for the new category (transformed).
+ *                                   Expected fields: dolibarr_category_id, name, description,
+ *                                   parent_id (local parent ID), parent_dolibarr_category_id,
+ *                                   dolibarr_created_at, dolibarr_updated_at.
+ * @param {object} logger - Optional logger instance.
+ */
+async function addCategory(categoryPayload, logger = console) {
+  const {
+    dolibarr_category_id, name, description, parent_id, parent_dolibarr_category_id,
+    dolibarr_created_at, dolibarr_updated_at
+  } = categoryPayload;
+
+  try {
+    const queryText = `
+      INSERT INTO categories (
+        dolibarr_category_id, name, description, parent_id, parent_dolibarr_category_id,
+        dolibarr_created_at, dolibarr_updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (dolibarr_category_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        parent_id = EXCLUDED.parent_id,
+        parent_dolibarr_category_id = EXCLUDED.parent_dolibarr_category_id,
+        dolibarr_created_at = EXCLUDED.dolibarr_created_at,
+        dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
+        updated_at = NOW()
+      RETURNING *;
+    `;
+    const { rows } = await db.query(queryText, [
+      dolibarr_category_id, name, description, parent_id, parent_dolibarr_category_id,
+      dolibarr_created_at, dolibarr_updated_at
+    ]);
+    (logger.info || logger)({ newCategory: rows[0] }, `Category added/updated: ${name}`);
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger)({ err: error, categoryPayload }, 'Error in addCategory');
+    throw error;
+  }
+}
+
+/**
+ * Update an existing category by its Dolibarr ID.
+ * @param {string|number} dolibarrId - The Dolibarr ID of the category to update.
+ * @param {object} categoryPayload - Data for updating the category (transformed).
+ *                                   Expected fields: name, description, parent_id,
+ *                                   parent_dolibarr_category_id, dolibarr_updated_at.
+ * @param {object} logger - Optional logger instance.
+ */
+async function updateCategoryByDolibarrId(dolibarrId, categoryPayload, logger = console) {
+  const {
+    name, description, parent_id, parent_dolibarr_category_id,
+    dolibarr_updated_at // dolibarr_created_at is usually not updated
+  } = categoryPayload;
+
+  try {
+    const queryText = `
+      UPDATE categories
+      SET name = $1, description = $2, parent_id = $3, parent_dolibarr_category_id = $4,
+          dolibarr_updated_at = $5, updated_at = NOW()
+      WHERE dolibarr_category_id = $6
+      RETURNING *;
+    `;
+    const { rows } = await db.query(queryText, [
+      name, description, parent_id, parent_dolibarr_category_id,
+      dolibarr_updated_at, dolibarrId
+    ]);
+
+    if (rows.length === 0) {
+      (logger.warn || logger)({ dolibarrCategoryId: dolibarrId }, `Category with Dolibarr ID ${dolibarrId} not found for update.`);
+      return null;
+    }
+    (logger.info || logger)({ updatedCategory: rows[0] }, `Category updated: ${name}`);
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger)({ err: error, dolibarrCategoryId: dolibarrId, categoryPayload }, 'Error in updateCategoryByDolibarrId');
+    throw error;
+  }
+}
+
+/**
+ * Delete a category by its Dolibarr ID.
+ * @param {string|number} dolibarrId - The Dolibarr ID of the category to delete.
+ * @param {object} logger - Optional logger instance.
+ */
+async function deleteCategoryByDolibarrId(dolibarrId, logger = console) {
+  try {
+    const queryText = 'DELETE FROM categories WHERE dolibarr_category_id = $1 RETURNING *;';
+    const { rows } = await db.query(queryText, [dolibarrId]);
+
+    if (rows.length === 0) {
+      (logger.warn || logger)({ dolibarrCategoryId: dolibarrId }, `Category with Dolibarr ID ${dolibarrId} not found for deletion.`);
+      return null;
+    }
+    (logger.info || logger)({ deletedCategory: rows[0] }, `Category deleted (Dolibarr ID: ${dolibarrId})`);
+    return rows[0]; // Returns the deleted category data
+  } catch (error) {
+    (logger.error || logger)({ err: error, dolibarrCategoryId: dolibarrId }, 'Error in deleteCategoryByDolibarrId');
+    throw error; // Rethrow to be handled by service/route layer
+  }
+}
+
+
 export default {
   getAllCategories,
+  getCategoryById,
+  getCategoryByDolibarrId,
+  addCategory,
+  updateCategoryByDolibarrId,
+  deleteCategoryByDolibarrId,
 };

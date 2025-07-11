@@ -397,4 +397,418 @@ export default {
   transformVariant,
   transformProductImage,
   transformStockLevel,
+  // Webhook Handler Placeholder Functions
+  handleProductCreate,
+  handleProductModify,
+  handleProductDelete,
+  handleCategoryCreate,
+  handleCategoryModify,
+  handleCategoryDelete,
+  handleStockMovement,
+  handleWebhook, // Main dispatcher
 };
+
+// --- Webhook Processing Logic ---
+
+// Placeholder functions for each webhook event type
+// These will be fleshed out in subsequent steps.
+// They need to be async as they will perform DB operations and API calls.
+
+// Forward declare controllers and services used by webhook handlers
+import categoryController from '../controllers/categoryController.js';
+import productController from '../controllers/productController.js';
+import dolibarrApiService from './dolibarrApiService.js';
+
+
+async function handleProductCreate(objectData, eventLogger) {
+  eventLogger.info({ dolibarrProductId: objectData.id, data: objectData }, 'EVENT: PRODUCT_CREATE received. Processing...');
+  try {
+    const transformedData = transformProduct(objectData); // transformProduct is already defined
+
+    // Add/Upsert the product
+    const product = await productController.addProduct(transformedData, eventLogger);
+    if (!product || !product.id) {
+      eventLogger.error({ dolibarrProductId: objectData.id }, 'Failed to add/update product in DB or did not return product ID.');
+      // Consider throwing an error here if product creation is critical for subsequent steps
+      return;
+    }
+    const localProductId = product.id;
+    const dolibarrProductId = product.dolibarr_product_id; // Use the ID from the DB record
+
+    eventLogger.info({ localProductId, dolibarrProductId }, 'Product added/updated in DB.');
+
+    // Fetch and link categories
+    try {
+      const categoriesFromApi = await dolibarrApiService.getProductCategories(dolibarrProductId);
+      eventLogger.info({ dolibarrProductId, categoriesFromApi }, 'Categories fetched from API for new product.');
+      const dolibarrCategoryIdsToLink = categoriesFromApi
+        .map(cat => cat.id)
+        .filter(id => id != null && id !== undefined && String(id).trim() !== "");
+
+      if (dolibarrCategoryIdsToLink.length > 0) {
+        await productController.linkProductToCategories(localProductId, dolibarrCategoryIdsToLink, eventLogger);
+        eventLogger.info({ localProductId, dolibarrCategoryIdsToLink }, 'Product categories linked.');
+      } else {
+        eventLogger.info({ localProductId, dolibarrProductId }, 'No categories returned from API to link for this product, or all IDs were invalid.');
+      }
+    } catch (catError) {
+      eventLogger.error({ err: catError, localProductId, dolibarrProductId }, 'Error fetching or linking product categories for PRODUCT_CREATE.');
+      // Non-fatal for now, product is created, categories can be fixed by a modify event or full sync
+    }
+
+    // Sync variants
+    try {
+      await syncProductVariantsByDolibarrId(dolibarrProductId, localProductId, eventLogger);
+    } catch (variantError) {
+      eventLogger.error({ err: variantError, dolibarrProductId, localProductId }, 'Error during variant sync in PRODUCT_CREATE. Product created/updated, categories linked.');
+      // Non-fatal for the main product creation flow
+    }
+
+    // TODO (Step 4 - already done, but good to keep track): Call stock sync: await syncProductStockByDolibarrId(dolibarrProductId, eventLogger);
+    // Actually, stock sync should also be called here for a new product
+    try {
+      await syncProductStockByDolibarrId(dolibarrProductId, eventLogger); // Ensure this is called after product exists
+    } catch (stockError) {
+      eventLogger.error({ err: stockError, dolibarrProductId, localProductId }, 'Error during stock sync in PRODUCT_CREATE.');
+    }
+
+
+    eventLogger.info({ dolibarrProductId: objectData.id, localProductId }, 'PRODUCT_CREATE processing finished.');
+
+  } catch (error) {
+    eventLogger.error({ err: error, dolibarrProductId: objectData.id }, 'Error processing PRODUCT_CREATE');
+    throw error; // Re-throw to be caught by the main webhook handler
+  }
+}
+
+async function handleProductModify(objectData, eventLogger) {
+  eventLogger.info({ dolibarrProductId: objectData.id, data: objectData }, 'EVENT: PRODUCT_MODIFY received. Processing...');
+  try {
+    const dolibarrProductId = objectData.id;
+    const transformedData = transformProduct(objectData);
+
+    // Attempt to update the product.
+    let product = await productController.updateProductByDolibarrId(dolibarrProductId, transformedData, eventLogger);
+
+    if (!product) {
+      // Product not found by dolibarrProductId for update.
+      // This could mean it's a new product not yet synced or was deleted.
+      // Try an upsert (addProduct handles ON CONFLICT DO UPDATE).
+      eventLogger.warn({ dolibarrProductId }, 'Product not found for update. Attempting to upsert (create or update if exists).');
+      product = await productController.addProduct(transformedData, eventLogger);
+      if (!product) {
+        eventLogger.error({ dolibarrProductId }, 'Failed to update or add product in DB for PRODUCT_MODIFY after initial update attempt failed.');
+        return; // Critical failure if product cannot be established in DB
+      }
+    }
+
+    const localProductId = product.id; // ID from our database
+
+    eventLogger.info({ localProductId, dolibarrProductId }, 'Product ensured/updated in DB.');
+
+    // Re-fetch, clear, and link categories
+    try {
+      eventLogger.info({ localProductId }, 'Clearing existing category links for product modification.');
+      await productController.clearProductCategoryLinks(localProductId, eventLogger);
+
+      const categoriesFromApi = await dolibarrApiService.getProductCategories(dolibarrProductId);
+      eventLogger.info({ dolibarrProductId, categoriesFromApi }, 'Categories fetched from API for modified product.');
+      const dolibarrCategoryIdsToLink = categoriesFromApi
+        .map(cat => cat.id)
+        .filter(id => id != null && id !== undefined && String(id).trim() !== "");
+
+      if (dolibarrCategoryIdsToLink.length > 0) {
+        await productController.linkProductToCategories(localProductId, dolibarrCategoryIdsToLink, eventLogger);
+        eventLogger.info({ localProductId, dolibarrCategoryIdsToLink }, 'Product categories re-linked.');
+      } else {
+         eventLogger.info({ localProductId, dolibarrProductId }, 'No categories returned from API to re-link for this product, or all IDs were invalid.');
+      }
+    } catch (catError) {
+      eventLogger.error({ err: catError, localProductId, dolibarrProductId }, 'Error re-linking product categories for PRODUCT_MODIFY.');
+      // Non-fatal for now.
+    }
+
+    // Sync variants
+    try {
+      await syncProductVariantsByDolibarrId(dolibarrProductId, localProductId, eventLogger);
+    } catch (variantError) {
+      eventLogger.error({ err: variantError, dolibarrProductId, localProductId }, 'Error during variant sync in PRODUCT_MODIFY. Product updated, categories re-linked.');
+      // Non-fatal
+    }
+
+    // Sync stock
+    try {
+      await syncProductStockByDolibarrId(dolibarrProductId, eventLogger);
+    } catch (stockError) {
+      eventLogger.error({ err: stockError, dolibarrProductId, localProductId }, 'Error during stock sync in PRODUCT_MODIFY.');
+    }
+
+    eventLogger.info({ dolibarrProductId: objectData.id, localProductId }, 'PRODUCT_MODIFY processing finished.');
+
+  } catch (error) {
+    eventLogger.error({ err: error, dolibarrProductId: objectData.id }, 'Error processing PRODUCT_MODIFY');
+    throw error;
+  }
+}
+
+/**
+ * Synchronizes product variants for a given Dolibarr product ID.
+ * Fetches variants from Dolibarr API and uses productController to update them in the local DB.
+ * @param {string|number} dolibarrProductId - The Dolibarr ID of the parent product.
+ * @param {number} localProductId - The local ID of the parent product.
+ * @param {object} eventLogger - The logger instance.
+ */
+async function syncProductVariantsByDolibarrId(dolibarrProductId, localProductId, eventLogger) {
+  eventLogger.info({ dolibarrProductId, localProductId }, 'Starting variant sync for product.');
+  try {
+    const variantsFromApi = await dolibarrApiService.getProductVariants(dolibarrProductId);
+    eventLogger.info({ dolibarrProductId, localProductId, count: variantsFromApi.length }, `Fetched ${variantsFromApi.length} variants from API.`);
+
+    // productController.syncProductVariants expects the transformVariant function.
+    // Pass the one defined in this service.
+    await productController.syncProductVariants(localProductId, variantsFromApi, transformVariant, eventLogger);
+
+    eventLogger.info({ dolibarrProductId, localProductId }, 'Variant sync for product finished.');
+  } catch (error) {
+    // Specific error handling for variants if needed (e.g., API 404 means no variants)
+    if (error.isAxiosError && error.response && error.response.status === 404) {
+        eventLogger.info({ dolibarrProductId, localProductId }, 'No variants found for product in Dolibarr (API returned 404). Existing local variants (if any) will be cleared by syncProductVariants.');
+        // Call syncProductVariants with empty array to ensure local variants are cleared
+        await productController.syncProductVariants(localProductId, [], transformVariant, eventLogger);
+    } else {
+        eventLogger.error({ err: error, dolibarrProductId, localProductId }, 'Error during product variant synchronization.');
+        throw error; // Re-throw for other errors
+    }
+  }
+}
+
+async function handleProductDelete(objectData, eventLogger) {
+  eventLogger.info({ dolibarrProductId: objectData.id }, 'EVENT: PRODUCT_DELETE received. Processing...');
+  try {
+    const dolibarrProductId = objectData.id;
+    // productController.deleteProductByDolibarrId already logs internally
+    const deletedProduct = await productController.deleteProductByDolibarrId(dolibarrProductId, eventLogger);
+
+    if (deletedProduct) {
+      eventLogger.info({ dolibarrProductId, deletedLocalId: deletedProduct.id }, 'PRODUCT_DELETE processing: Product confirmed deleted from DB.');
+    } else {
+      // This is not necessarily an error, product might have been deleted already by a previous event or manual action.
+      eventLogger.warn({ dolibarrProductId }, 'PRODUCT_DELETE processing: Product not found in DB (might be already deleted).');
+    }
+  } catch (error) {
+    eventLogger.error({ err: error, dolibarrProductId: objectData.id }, 'Error processing PRODUCT_DELETE');
+    throw error;
+  }
+}
+
+async function handleCategoryCreate(objectData, eventLogger) {
+  eventLogger.info({ dolibarrCategoryId: objectData.id, data: objectData }, 'EVENT: CATEGORY_CREATE received. Processing...');
+  try {
+    const transformedData = transformCategory(objectData); // transformCategory is already defined
+
+    let localParentId = null;
+    if (transformedData.parent_dolibarr_category_id && transformedData.parent_dolibarr_category_id !== "0" && transformedData.parent_dolibarr_category_id !== 0) {
+      const parentCategory = await categoryController.getCategoryByDolibarrId(transformedData.parent_dolibarr_category_id, eventLogger);
+      if (parentCategory) {
+        localParentId = parentCategory.id;
+      } else {
+        eventLogger.warn({ parentDolibarrId: transformedData.parent_dolibarr_category_id }, 'Parent category not found in local DB by Dolibarr ID. Setting parent_id to null.');
+      }
+    }
+
+    const categoryPayload = {
+      ...transformedData,
+      parent_id: localParentId, // Add resolved local parent_id
+    };
+
+    await categoryController.addCategory(categoryPayload, eventLogger);
+    eventLogger.info({ dolibarrCategoryId: objectData.id }, 'Category created/updated successfully.');
+
+  } catch (error) {
+    eventLogger.error({ err: error, dolibarrCategoryId: objectData.id }, 'Error processing CATEGORY_CREATE');
+    throw error; // Re-throw to be caught by the main webhook handler
+  }
+}
+
+async function handleCategoryModify(objectData, eventLogger) {
+  eventLogger.info({ dolibarrCategoryId: objectData.id, data: objectData }, 'EVENT: CATEGORY_MODIFY received. Processing...');
+  try {
+    const transformedData = transformCategory(objectData);
+    const dolibarrCategoryId = objectData.id;
+
+    let localParentId = null;
+    if (transformedData.parent_dolibarr_category_id && transformedData.parent_dolibarr_category_id !== "0" && transformedData.parent_dolibarr_category_id !== 0) {
+      const parentCategory = await categoryController.getCategoryByDolibarrId(transformedData.parent_dolibarr_category_id, eventLogger);
+      if (parentCategory) {
+        localParentId = parentCategory.id;
+      } else {
+        eventLogger.warn({ parentDolibarrId: transformedData.parent_dolibarr_category_id }, 'Parent category not found in local DB for update. Setting parent_id to null.');
+      }
+    }
+
+    const categoryPayload = {
+      ...transformedData,
+      parent_id: localParentId,
+    };
+
+    // Ensure dolibarr_category_id is not part of the payload for update, only other fields
+    const { dolibarr_category_id, ...updatePayload } = categoryPayload;
+
+
+    const updatedCategory = await categoryController.updateCategoryByDolibarrId(dolibarrCategoryId, updatePayload, eventLogger);
+    if (updatedCategory) {
+      eventLogger.info({ dolibarrCategoryId }, 'Category updated successfully.');
+    } else {
+      eventLogger.warn({ dolibarrCategoryId }, 'Category not found for modification or no changes made.');
+      // Optionally, treat as a create if not found (though addCategory with ON CONFLICT handles this better)
+      // For now, if update fails to find, it's logged.
+    }
+  } catch (error) {
+    eventLogger.error({ err: error, dolibarrCategoryId: objectData.id }, 'Error processing CATEGORY_MODIFY');
+    throw error;
+  }
+}
+
+async function handleCategoryDelete(objectData, eventLogger) {
+  eventLogger.info({ dolibarrCategoryId: objectData.id }, 'EVENT: CATEGORY_DELETE received. Processing...');
+  try {
+    const dolibarrCategoryId = objectData.id;
+    const deletedCategory = await categoryController.deleteCategoryByDolibarrId(dolibarrCategoryId, eventLogger);
+
+    if (deletedCategory) {
+      eventLogger.info({ dolibarrCategoryId }, 'Category deleted successfully.');
+    } else {
+      eventLogger.warn({ dolibarrCategoryId }, 'Category not found for deletion.');
+    }
+  } catch (error) {
+    eventLogger.error({ err: error, dolibarrCategoryId: objectData.id }, 'Error processing CATEGORY_DELETE');
+    throw error;
+  }
+}
+
+async function handleStockMovement(objectData, eventLogger) {
+  const dolibarrProductId = objectData.product_id;
+  const warehouseIdHint = objectData.warehouse_id; // The specific warehouse that had movement
+  const quantityChanged = objectData.qty;
+
+  eventLogger.info({ dolibarrProductId, warehouseIdHint, quantityChanged }, 'EVENT: STOCK_MOVEMENT received. Initiating full stock sync for this product.');
+
+  try {
+    await syncProductStockByDolibarrId(dolibarrProductId, eventLogger);
+    eventLogger.info({ dolibarrProductId }, 'Stock sync triggered by STOCK_MOVEMENT completed.');
+  } catch (error) {
+    eventLogger.error({ err: error, dolibarrProductId }, 'Error during stock sync triggered by STOCK_MOVEMENT.');
+    throw error; // Re-throw to be caught by main webhook handler
+  }
+}
+
+/**
+ * Synchronizes the stock levels for a single product from Dolibarr to the local database.
+ * This function fetches all stock information for the given Dolibarr product ID across all its warehouses
+ * and updates the local stock_levels table.
+ * @param {string|number} dolibarrProductId - The Dolibarr ID of the product.
+ * @param {object} eventLogger - The logger instance.
+ */
+async function syncProductStockByDolibarrId(dolibarrProductId, eventLogger) {
+  eventLogger.info({ dolibarrProductId }, 'Starting stock sync for single product.');
+
+  try {
+    const localProduct = await productController.getProductByDolibarrId(dolibarrProductId, eventLogger);
+    if (!localProduct || !localProduct.id) {
+      eventLogger.warn({ dolibarrProductId }, 'Product not found in local DB. Cannot sync stock.');
+      return;
+    }
+    const internalProductId = localProduct.id;
+
+    const stockApiData = await dolibarrApiService.getProductStock(dolibarrProductId);
+    eventLogger.info({ dolibarrProductId, stockApiDataFromDolibarr: stockApiData }, 'Raw stock API data received for product.');
+
+    if (!stockApiData || !stockApiData.stock_warehouses || typeof stockApiData.stock_warehouses !== 'object' || Object.keys(stockApiData.stock_warehouses).length === 0) {
+      eventLogger.info({ dolibarrProductId }, 'No stock_warehouses data or empty/invalid stock_warehouses for product. Clearing existing stock might be an option here if desired.');
+      // Potentially clear existing stock for this product if API returns none.
+      // For now, we only update if data is present.
+      // Example: await productController.clearStockForProduct(internalProductId, eventLogger);
+      return;
+    }
+
+    let stockUpdateCount = 0;
+    for (const dolibarrWarehouseId in stockApiData.stock_warehouses) {
+      if (Object.prototype.hasOwnProperty.call(stockApiData.stock_warehouses, dolibarrWarehouseId)) {
+        const stockDetail = stockApiData.stock_warehouses[dolibarrWarehouseId];
+        const quantity = parseInt(stockDetail.real, 10); // 'real' seems to be the field from Dolibarr API v18
+
+        if (isNaN(quantity)) {
+            eventLogger.warn({ dolibarrProductId, dolibarrWarehouseId, stockDetail }, 'Invalid quantity received from API. Skipping stock update for this warehouse.');
+            continue;
+        }
+
+        // For now, assuming stock is for the base product (variant_id = null)
+        // Future enhancement: handle per-variant stock if API supports it and schema allows
+        await productController.updateStockLevel(internalProductId, null, dolibarrWarehouseId, quantity, eventLogger);
+        stockUpdateCount++;
+      }
+    }
+    eventLogger.info({ dolibarrProductId, internalProductId, warehousesProcessed: stockUpdateCount }, 'Stock sync for product finished.');
+
+  } catch (error) {
+    // Handle 404 specifically for getProductStock - means product has no stock entries in Dolibarr
+    if (error.isAxiosError && error.response && error.response.status === 404) {
+      eventLogger.info({ dolibarrProductId }, 'Product has no stock information in Dolibarr (API returned 404). Local stock will not be updated, existing entries remain unless cleared.');
+      // Consider clearing local stock for this product if API returns 404,
+      // e.g., await productController.clearStockForProduct(internalProductId, eventLogger);
+    } else {
+      eventLogger.error({ err: error, dolibarrProductId }, 'Error during single product stock synchronization.');
+      throw error; // Re-throw for other errors
+    }
+  }
+}
+
+
+/**
+ * Main webhook dispatcher.
+ * @param {object} payload - The webhook payload from Dolibarr.
+ * @param {object} parentLogger - The Fastify logger instance from the request.
+ */
+async function handleWebhook(payload, parentLogger) {
+  const { triggercode, object: objectData } = payload;
+  // Create a child logger for this specific webhook event to carry triggercode and object ID
+  const eventLogger = parentLogger.child({ triggercode, objectId: objectData.id || objectData.product_id });
+
+  eventLogger.info('Webhook event received, dispatching...');
+
+  try {
+    switch (triggercode) {
+      case 'PRODUCT_CREATE':
+        await handleProductCreate(objectData, eventLogger);
+        break;
+      case 'PRODUCT_MODIFY':
+        await handleProductModify(objectData, eventLogger);
+        break;
+      case 'PRODUCT_DELETE':
+        await handleProductDelete(objectData, eventLogger);
+        break;
+      case 'CATEGORY_CREATE':
+        await handleCategoryCreate(objectData, eventLogger);
+        break;
+      case 'CATEGORY_MODIFY':
+        await handleCategoryModify(objectData, eventLogger);
+        break;
+      case 'CATEGORY_DELETE':
+        await handleCategoryDelete(objectData, eventLogger);
+        break;
+      case 'STOCK_MOVEMENT':
+        await handleStockMovement(objectData, eventLogger);
+        break;
+      default:
+        eventLogger.warn(`Unknown triggercode: ${triggercode}. No action taken.`);
+    }
+    eventLogger.info('Webhook processing logic complete.');
+  } catch (error) {
+    eventLogger.error({ err: error }, `Error processing webhook for triggercode ${triggercode}`);
+    // Re-throw the error if specific upstream handling is needed,
+    // or handle it definitively here (e.g. by ensuring it's logged and moving on).
+    // Since webhookRoutes.js already catches errors from the handleWebhook promise,
+    // re-throwing here will ensure it's caught and logged by the route's error handler.
+    throw error;
+  }
+}
