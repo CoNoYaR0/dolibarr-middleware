@@ -170,7 +170,321 @@ async function getProductBySlug(request, reply) {
 }
 
 
+/**
+ * Get a single product by its Dolibarr ID.
+ * @param {string|number} dolibarrProductId - The Dolibarr ID of the product.
+ * @param {object} logger - Optional logger instance.
+ */
+async function getProductByDolibarrId(dolibarrProductId, logger = console) {
+  try {
+    const queryText = 'SELECT * FROM products WHERE dolibarr_product_id = $1;';
+    const { rows } = await db.query(queryText, [dolibarrProductId]);
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, dolibarrProductId }, 'Error in getProductByDolibarrId');
+    throw error;
+  }
+}
+
+/**
+ * Synchronizes product variants for a given local product ID.
+ * Deletes all existing variants for the product and then inserts the new ones from the API data.
+ * @param {number} localProductId - The local ID of the parent product.
+ * @param {Array<object>} variantsDataFromApi - Array of variant objects from Dolibarr API.
+ * @param {function} transformVariantFn - The function to transform Dolibarr variant data to local DB schema.
+ * @param {object} logger - Optional logger instance.
+ */
+async function syncProductVariants(localProductId, variantsDataFromApi, transformVariantFn, logger = console) {
+  try {
+    // Delete existing variants for this product
+    const deleteResult = await db.query('DELETE FROM product_variants WHERE product_id = $1 RETURNING dolibarr_variant_id;', [localProductId]);
+    if (deleteResult.rowCount > 0) {
+      (logger.info || logger)({ localProductId, count: deleteResult.rowCount, deleted_dolibarr_ids: deleteResult.rows.map(r => r.dolibarr_variant_id) }, `Deleted ${deleteResult.rowCount} existing variants for product.`);
+    }
+
+    if (!variantsDataFromApi || variantsDataFromApi.length === 0) {
+      (logger.info || logger)({ localProductId }, 'No new variants data provided from API. All existing variants (if any) have been cleared.');
+      return;
+    }
+
+    let upsertedCount = 0;
+    for (const dolibarrVariant of variantsDataFromApi) {
+      if (!dolibarrVariant.id) {
+        (logger.warn || logger)({ localProductId, variantData: dolibarrVariant }, 'Skipping variant due to missing Dolibarr variant ID.');
+        continue;
+      }
+      // The transformVariantFn is expected to be passed from syncService,
+      // as it's currently defined there.
+      const variantPayload = transformVariantFn(dolibarrVariant, localProductId);
+
+      const queryText = `
+        INSERT INTO product_variants (
+          dolibarr_variant_id, product_id, sku_variant, price_modifier, attributes,
+          dolibarr_created_at, dolibarr_updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (dolibarr_variant_id) DO UPDATE SET
+          product_id = EXCLUDED.product_id,
+          sku_variant = EXCLUDED.sku_variant,
+          price_modifier = EXCLUDED.price_modifier,
+          attributes = EXCLUDED.attributes,
+          dolibarr_created_at = EXCLUDED.dolibarr_created_at,
+          dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
+          updated_at = NOW()
+        RETURNING id;
+      `;
+      await db.query(queryText, [
+        variantPayload.dolibarr_variant_id, variantPayload.product_id, variantPayload.sku_variant,
+        variantPayload.price_modifier, variantPayload.attributes,
+        variantPayload.dolibarr_created_at, variantPayload.dolibarr_updated_at
+      ]);
+      upsertedCount++;
+    }
+    (logger.info || logger)({ localProductId, count: upsertedCount }, `Upserted ${upsertedCount} variants for product.`);
+
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, localProductId }, 'Error in syncProductVariants');
+    throw error;
+  }
+}
+
+/**
+ * Add a new product to the database. Performs an UPSERT based on dolibarr_product_id.
+ * @param {object} productPayload - Data for the new product (transformed from Dolibarr).
+ *                                  Expected fields from transformProduct.
+ * @param {object} logger - Optional logger instance.
+ */
+async function addProduct(productPayload, logger = console) {
+  const {
+    dolibarr_product_id, sku, name, description, long_description, price,
+    is_active, slug, dolibarr_created_at, dolibarr_updated_at
+  } = productPayload;
+
+  try {
+    const queryText = `
+      INSERT INTO products (
+        dolibarr_product_id, sku, name, description, long_description, price,
+        is_active, slug, dolibarr_created_at, dolibarr_updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      ON CONFLICT (dolibarr_product_id) DO UPDATE SET
+        sku = EXCLUDED.sku,
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        long_description = EXCLUDED.long_description,
+        price = EXCLUDED.price,
+        is_active = EXCLUDED.is_active,
+        slug = EXCLUDED.slug,
+        dolibarr_created_at = EXCLUDED.dolibarr_created_at,
+        dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
+        updated_at = NOW()
+      RETURNING *;
+    `;
+    const { rows } = await db.query(queryText, [
+      dolibarr_product_id, sku, name, description, long_description, price,
+      is_active, slug, dolibarr_created_at, dolibarr_updated_at
+    ]);
+    (logger.info || logger)({ newProduct: rows[0] }, `Product added/updated: ${name} (Dolibarr ID: ${dolibarr_product_id})`);
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, productPayload }, 'Error in addProduct');
+    throw error;
+  }
+}
+
+/**
+ * Update an existing product by its Dolibarr ID.
+ * @param {string|number} dolibarrProductId - The Dolibarr ID of the product to update.
+ * @param {object} productPayload - Data for updating the product.
+ * @param {object} logger - Optional logger instance.
+ */
+async function updateProductByDolibarrId(dolibarrProductId, productPayload, logger = console) {
+  const {
+    sku, name, description, long_description, price,
+    is_active, slug, dolibarr_updated_at // dolibarr_created_at is usually not updated
+  } = productPayload;
+
+  try {
+    const queryText = `
+      UPDATE products
+      SET sku = $1, name = $2, description = $3, long_description = $4, price = $5,
+          is_active = $6, slug = $7, dolibarr_updated_at = $8, updated_at = NOW()
+      WHERE dolibarr_product_id = $9
+      RETURNING *;
+    `;
+    const { rows } = await db.query(queryText, [
+      sku, name, description, long_description, price,
+      is_active, slug, dolibarr_updated_at, dolibarrProductId
+    ]);
+
+    if (rows.length === 0) {
+      (logger.warn || logger.info)({ dolibarrProductId }, `Product with Dolibarr ID ${dolibarrProductId} not found for update.`);
+      return null;
+    }
+    (logger.info || logger)({ updatedProduct: rows[0] }, `Product updated: ${name} (Dolibarr ID: ${dolibarrProductId})`);
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, dolibarrProductId, productPayload }, 'Error in updateProductByDolibarrId');
+    throw error;
+  }
+}
+
+/**
+ * Delete a product by its Dolibarr ID.
+ * Relies on ON DELETE CASCADE for related tables (product_categories_map, product_variants, stock_levels, images).
+ * @param {string|number} dolibarrProductId - The Dolibarr ID of the product to delete.
+ * @param {object} logger - Optional logger instance.
+ */
+async function deleteProductByDolibarrId(dolibarrProductId, logger = console) {
+  try {
+    // First, get the local product ID to ensure related data is logged or handled if needed before cascade
+    const product = await getProductByDolibarrId(dolibarrProductId, logger);
+    if (!product) {
+      (logger.warn || logger.info)({ dolibarrProductId }, `Product with Dolibarr ID ${dolibarrProductId} not found for deletion.`);
+      return null;
+    }
+
+    // Note: product_categories_map, product_variants, stock_levels, images should have ON DELETE CASCADE
+    // constraint on their product_id foreign key.
+    const queryText = 'DELETE FROM products WHERE dolibarr_product_id = $1 RETURNING *;';
+    const { rows } = await db.query(queryText, [dolibarrProductId]);
+
+    (logger.info || logger)({ deletedProduct: rows[0] }, `Product deleted (Dolibarr ID: ${dolibarrProductId})`);
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, dolibarrProductId }, 'Error in deleteProductByDolibarrId');
+    throw error;
+  }
+}
+
+/**
+ * Clears all category associations for a given local product ID.
+ * @param {number} internalProductId - The local ID of the product.
+ * @param {object} logger - Optional logger instance.
+ */
+async function clearProductCategoryLinks(internalProductId, logger = console) {
+  try {
+    const { rowCount } = await db.query('DELETE FROM product_categories_map WHERE product_id = $1', [internalProductId]);
+    (logger.info || logger)({ internalProductId, clearedLinks: rowCount }, `Cleared ${rowCount} category links for product ID ${internalProductId}.`);
+    return rowCount;
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, internalProductId }, 'Error in clearProductCategoryLinks');
+    throw error;
+  }
+}
+
+/**
+ * Links a product to a list of categories using their Dolibarr IDs.
+ * @param {number} internalProductId - The local ID of the product.
+ * @param {Array<string|number>} arrayOfDolibarrCategoryIds - Array of Dolibarr category IDs to link.
+ * @param {object} logger - Optional logger instance.
+ */
+async function linkProductToCategories(internalProductId, arrayOfDolibarrCategoryIds, logger = console) {
+  if (!arrayOfDolibarrCategoryIds || arrayOfDolibarrCategoryIds.length === 0) {
+    (logger.info || logger)({ internalProductId }, 'No Dolibarr category IDs provided for linking.');
+    return 0;
+  }
+
+  let linkedCount = 0;
+  try {
+    for (const dolibarrCatId of arrayOfDolibarrCategoryIds) {
+      // Need categoryController to get local category ID from Dolibarr ID
+      // This introduces a dependency, ensure categoryController is available or use a direct DB query here
+      const categoryQuery = 'SELECT id FROM categories WHERE dolibarr_category_id = $1';
+      const { rows: catRows } = await db.query(categoryQuery, [dolibarrCatId]);
+
+      if (catRows.length > 0) {
+        const localCategoryId = catRows[0].id;
+        await db.query(
+          'INSERT INTO product_categories_map (product_id, category_id) VALUES ($1, $2) ON CONFLICT (product_id, category_id) DO NOTHING',
+          [internalProductId, localCategoryId]
+        );
+        linkedCount++;
+        (logger.info || logger)({ internalProductId, localCategoryId, dolibarrCatId }, `Linked product to category.`);
+      } else {
+        (logger.warn || logger.info)({ internalProductId, dolibarrCatId }, `Category with Dolibarr ID ${dolibarrCatId} not found for linking.`);
+      }
+    }
+    (logger.info || logger)({ internalProductId, linkedCount }, `Finished linking product to categories.`);
+    return linkedCount;
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, internalProductId, arrayOfDolibarrCategoryIds }, 'Error in linkProductToCategories');
+    throw error;
+  }
+}
+
+
 export default {
   listProducts,
   getProductBySlug,
+  getProductByDolibarrId,
+  addProduct,
+  updateProductByDolibarrId,
+  deleteProductByDolibarrId,
+  clearProductCategoryLinks,
+  linkProductToCategories,
+  updateStockLevel,
+  syncProductVariants, // Added this function
 };
+
+/**
+ * Updates or inserts a stock level entry for a product/variant in a specific warehouse.
+ * @param {number} internalProductId - The local ID of the product.
+ * @param {number|null} internalVariantId - The local ID of the variant (null if stock is for base product).
+ * @param {string|number} dolibarrWarehouseId - The Dolibarr warehouse ID.
+ * @param {number} quantity - The stock quantity.
+ * @param {object} logger - Optional logger instance.
+ */
+async function updateStockLevel(internalProductId, internalVariantId, dolibarrWarehouseId, quantity, logger = console) {
+  try {
+    // Stock levels table uses product_id (nullable), variant_id (nullable), and warehouse_id (varchar)
+    // Ensure warehouse_id is treated as a string as per schema.
+    const whId = String(dolibarrWarehouseId);
+    const now = new Date();
+
+    // product_id is required if variant_id is null.
+    // variant_id implies product_id via its own FK, but stock_levels allows product_id to be null if variant_id is set.
+    // However, our logic usually has product_id.
+    // Let's ensure internalProductId is always provided if internalVariantId is null.
+    if (internalVariantId === null && internalProductId === null) {
+      (logger.error || logger.info)({ internalProductId, internalVariantId, dolibarrWarehouseId, quantity }, 'Error in updateStockLevel: internalProductId cannot be null if internalVariantId is null.');
+      throw new Error('internalProductId cannot be null if internalVariantId is null for stock level update.');
+    }
+
+    // If variantId is provided, product_id in stock_levels could technically be null
+    // but it's better to store it if known. The productController.getProductByDolibarrId would give us the main product.
+    // For now, the signature expects internalProductId.
+
+    const queryText = `
+      INSERT INTO stock_levels (product_id, variant_id, warehouse_id, quantity, dolibarr_updated_at, last_checked_at)
+      VALUES ($1, $2, $3, $4, $5, $5)
+      ON CONFLICT (product_id, variant_id, warehouse_id) DO UPDATE SET
+        quantity = EXCLUDED.quantity,
+        dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
+        last_checked_at = EXCLUDED.last_checked_at,
+        updated_at = NOW()
+      RETURNING *;
+    `;
+
+    // Determine which ID to use for product_id in the stock_levels table.
+    // If internalVariantId is present, internalProductId refers to the parent product.
+    // The current schema for stock_levels has product_id and variant_id.
+    // If stock is for a variant, product_id in stock_levels table should reference the main product.
+    // If stock is for a base product (no variant), variant_id is null.
+
+    const { rows } = await db.query(queryText, [
+      internalProductId, // This should be the ID of the product record
+      internalVariantId, // Null if stock is for the base product
+      whId,
+      quantity,
+      now
+    ]);
+
+    (logger.info || logger)({ stockLevel: rows[0] }, `Stock level updated for product/variant in warehouse ${whId}.`);
+    return rows[0];
+  } catch (error) {
+    (logger.error || logger.info)({ err: error, internalProductId, internalVariantId, dolibarrWarehouseId, quantity }, 'Error in updateStockLevel');
+    throw error;
+  }
+}
