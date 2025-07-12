@@ -46,6 +46,6 @@ ALTER TABLE product_images
 -- this needs to be handled (e.g. by coalescing nulls to a special value in the constraint,
 -- or by ensuring `dolibarr_image_id` is always populated from Dolibarr data if it's the intended key).
 
-logger.warn('Review the UNIQUE constraint for product_images table based on your Dolibarr data for dolibarr_image_id reliability.');
+-- logger.warn('Review the UNIQUE constraint for product_images table based on your Dolibarr data for dolibarr_image_id reliability.');
 
 COMMIT;
