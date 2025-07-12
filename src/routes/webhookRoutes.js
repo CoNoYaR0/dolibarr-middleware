@@ -1,5 +1,6 @@
 // src/routes/webhookRoutes.js
-import { handleWebhook } from '../services/syncService.js';
+import syncService from '../services/syncService.js';
+const { handleWebhook } = syncService;
 import config from '../config/index.js'; // Corrected import
 
 async function webhookRoutes(fastify, options) {
