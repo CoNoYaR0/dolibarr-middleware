@@ -1,6 +1,7 @@
 // src/routes/webhookRoutes.js
-import { handleWebhook } from '../services/syncService.js';
-import config from '../config/index.js'; // Corrected import
+import syncService from '../services/syncService.js'; // Import the default object
+const { handleWebhook } = syncService; // Destructure to get the named function
+import config from '../config/index.js';
 
 async function webhookRoutes(fastify, options) {
   fastify.post('/webhook', async (request, reply) => {
@@ -11,11 +12,6 @@ async function webhookRoutes(fastify, options) {
     logger.info({ payload }, 'Received webhook payload.');
 
     // Security Check: Validate webhook secret
-    // IMPORTANT: Confirm the actual header Dolibarr uses for its webhook signature/secret.
-    // 'x-dolibarr-webhook-secret' is a placeholder.
-    // Dolibarr's documentation or testing environment should clarify this.
-    // For now, let's assume a simple shared secret.
-    // A more robust solution would involve HMAC signature verification if Dolibarr supports it.
     const expectedSecret = config.dolibarrWebhookSecret || process.env.DOLIBARR_WEBHOOK_SECRET;
     if (expectedSecret) {
       const providedSecret = headers['x-dolibarr-webhook-secret']; // Placeholder header
@@ -43,24 +39,18 @@ async function webhookRoutes(fastify, options) {
 
     try {
       // Asynchronously handle the webhook to respond quickly to Dolibarr.
-      // Pass the logger instance to handleWebhook for consistent logging.
       handleWebhook(payload, logger)
         .then(() => {
           logger.info(`Webhook processing initiated successfully for trigger: ${payload.triggercode}`);
         })
         .catch(error => {
-          // This catch is for errors within the async handleWebhook execution
           logger.error({ err: error, triggercode: payload.triggercode }, `Error during asynchronous webhook processing for trigger ${payload.triggercode}.`);
-          // We've already responded 200 to Dolibarr. This error needs to be handled internally (e.g., alerting).
         });
 
-      // Respond immediately to Dolibarr to acknowledge receipt
       logger.info(`Acknowledging webhook receipt for trigger: ${payload.triggercode}. Processing will continue in background.`);
       reply.status(200).send({ message: 'Webhook received and processing initiated.' });
 
     } catch (error) {
-      // This catch is for errors thrown synchronously before or during the call to handleWebhook
-      // (e.g., if handleWebhook itself was not async and threw directly, or if there's an issue setting up the promise)
       logger.error({ err: error, triggercode: payload.triggercode }, 'Webhook immediate handling error before or during async dispatch.');
       reply.status(500).send({ error: 'Internal Server Error during webhook reception.' });
     }

@@ -387,17 +387,19 @@ async function runInitialSync() {
 
 export default {
   runInitialSync,
+  // Initial sync functions
   syncCategories,
   syncProducts,
   syncProductVariants,
   syncProductImageMetadata,
   syncStockLevels,
+  // Transformation functions
   transformCategory,
   transformProduct,
   transformVariant,
   transformProductImage,
   transformStockLevel,
-  // Webhook Handler Placeholder Functions
+  // Specific webhook handlers
   handleProductCreate,
   handleProductModify,
   handleProductDelete,
@@ -405,7 +407,11 @@ export default {
   handleCategoryModify,
   handleCategoryDelete,
   handleStockMovement,
-  handleWebhook, // Main dispatcher
+  // Helper sync functions for webhooks
+  syncProductStockByDolibarrId,
+  syncProductVariantsByDolibarrId,
+  // Main webhook dispatcher
+  handleWebhook,
 };
 
 // --- Webhook Processing Logic ---
