@@ -1,5 +1,5 @@
 # Stage 1: Build - Install dependencies
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
@@ -11,7 +11,7 @@ COPY package*.json ./
 RUN npm install --omit=dev --legacy-peer-deps
 
 # Stage 2: Production - Copy built assets and run the app
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /usr/src/app
 
