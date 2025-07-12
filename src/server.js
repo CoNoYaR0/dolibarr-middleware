@@ -29,7 +29,23 @@ await fastify.register(fastifyHelmet, {
 
 
 // Declare a route for health check
-fastify.get('/health', async (request, reply) => {
+const healthCheckSchema = {
+  summary: 'Health Check',
+  description: 'Provides the operational status of the middleware. Indicates if the service is running and the current server timestamp.',
+  tags: ['Monitoring'],
+  response: {
+    200: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', example: 'ok' },
+        timestamp: { type: 'string', format: 'date-time' },
+        // dbStatus: { type: 'string', example: 'connected' } // Example if db check is added
+      },
+    },
+  },
+};
+
+fastify.get('/health', { schema: healthCheckSchema }, async (request, reply) => {
   // Optionally, include database connection status in health check later
   // const dbOk = await dbService.testConnection();
   return {

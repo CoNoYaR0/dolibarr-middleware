@@ -4,6 +4,9 @@ import productController from '../controllers/productController.js';
 // Define schema/validation for request/response if desired, using Fastify's schema capabilities.
 // Example for listProducts query parameters:
 const listProductsSchema = {
+  summary: 'List products',
+  description: 'Retrieves a paginated list of synchronized products. Supports filtering by category_id and sorting by various fields.',
+  tags: ['Products'],
   querystring: {
     type: 'object',
     properties: {
@@ -29,6 +32,9 @@ const listProductsSchema = {
 
 // Example for getProductBySlug params
 const getProductBySlugSchema = {
+  summary: 'Get product by slug',
+  description: 'Retrieves detailed information for a single product by its URL slug, including its variants, image URLs, stock levels, and associated categories.',
+  tags: ['Products'],
   params: {
     type: 'object',
     properties: {
@@ -42,7 +48,15 @@ const getProductBySlugSchema = {
 
 async function apiRoutes(fastify, options) {
   // Category Routes
-  fastify.get('/categories', categoryController.getAllCategories);
+  fastify.get('/categories', {
+    schema: {
+      summary: 'List all categories',
+      description: 'Retrieves a list of all synchronized categories from the local database.',
+      tags: ['Categories'],
+      // TODO: Define a response schema for categories if not already implicitly handled by controller
+      // response: { 200: { type: 'array', items: { type: 'object', properties: { id: {type: 'integer'}, name: {type: 'string'}, ... } } } }
+    }
+  }, categoryController.getAllCategories);
   // fastify.get('/categories/:idOrSlug', categoryController.getCategory); // Example for single category
 
   // Product Routes
