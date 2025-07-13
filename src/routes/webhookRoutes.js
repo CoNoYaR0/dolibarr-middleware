@@ -10,7 +10,7 @@ async function webhookRoutes(fastify, options) {
 
     // Security Check: Validate webhook secret from URL parameter
     const { secret } = params;
-    const expectedSecret = config.dolibarrWebhookSecret;
+    const expectedSecret = config.dolibarr.webhookSecret;
 
     // Enhanced logging for debugging
     logger.info({
