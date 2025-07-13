@@ -1,20 +1,10 @@
-[Français](./README-fr.md)
-
----
 # Dolibarr Integration Middleware
 
 ## 1. Introduction
 
 **Purpose:** This project, "Dolibarr Integration Middleware," is a standalone Node.js application built with Fastify and PostgreSQL. Its primary function is to act as an intermediary between a Dolibarr ERP instance and frontend applications or other services. It synchronizes key data (products, categories, variants, image metadata, stock levels) from Dolibarr into its own optimized PostgreSQL database. This data is then exposed via a RESTful API. Products can be associated with multiple categories.
 
-**Scope & Goals:**
--   **Decoupling:** To decouple frontend systems from direct reliance on the Dolibarr API, thereby improving frontend performance, resilience, and allowing for independent scaling.
--   **Performance:** To provide a faster, more optimized data source for read-heavy operations typically required by e-commerce frontends or product listings.
--   **Data Enrichment (Future):** To potentially enrich Dolibarr data with information from other sources or apply custom business logic before exposing it.
--   **Real-time Updates:** To achieve near real-time data synchronization using Dolibarr webhooks (with polling as a fallback mechanism).
--   **Flexible Image Handling:** To manage image metadata and construct CDN URLs, assuming image files are hosted on a user-configured CDN (e.g., an OVH web server), with the actual file placement managed by an external script.
-
-**Target Users:** Developers building frontend experiences (e.g., e-commerce websites, product catalogs) based on data managed in Dolibarr, or developers needing a more robust API layer for Dolibarr data.
+**Deployment:** This application is deployed on Render, with the PostgreSQL database hosted on Supabase.
 
 ## 2. Features Implemented
 
@@ -31,9 +21,8 @@
     -   Client service for making requests to the Dolibarr REST API. Adjusted for Dolibarr v18.0.4 specifics (e.g., category sorting, stock endpoint `/products/{id}/stock`, fetching product categories via `/categories/object/product/{id}`).
     -   Handles API key authentication and request timeouts.
 -   **Webhook Handling (`webhookRoutes.js`):**
-    -   Proof-of-concept endpoint (`/webhooks/dolibarr`) to receive webhooks from Dolibarr.
     -   Endpoint `POST /webhooks/webhook` to receive and process webhooks from Dolibarr.
-    -   Secret key validation using `DOLIBARR_WEBHOOK_SECRET` environment variable (expects `X-Dolibarr-Webhook-Secret` header from Dolibarr - *actual header name may vary, confirm with your Dolibarr setup*).
+    -   Security is currently disabled for testing purposes, as Dolibarr v18 does not support sending custom headers for webhooks. A warning is logged if a webhook is received without the `x-dolibarr-webhook-secret` header.
     -   Supported events:
         -   `PRODUCT_CREATE`: Creates product, links categories, syncs variants and stock.
         -   `PRODUCT_MODIFY`: Updates product, re-links categories, re-syncs variants and stock.
@@ -58,141 +47,35 @@
     -   Centralized configuration using environment variables.
 -   **Logging & Error Handling (`logger.js`, `server.js`):**
     -   Structured logging (Pino), centralized error handling.
--   **Dockerization (`Dockerfile`, `docker-compose.yml`):**
-    -   Multi-stage `Dockerfile` and `docker-compose.yml` for development.
--   **Testing (`vitest.config.js`, `src/**/__tests__`):**
-    -   Vitest testing framework. Unit tests for `syncService.js` transformations.
--   **Security Headers (`server.js`):**
-    -   Basic security headers via `@fastify/helmet`. (Fastify 5.x compatible version).
+-   **Deployment (`Dockerfile`, `render.yaml`):**
+    -   `Dockerfile` for containerization and `render.yaml` for deployment to Render.
 
-## 3. Architectural Choices & Key Technologies
-    (No significant changes here, but Fastify version is now 5.x)
--   **Node.js:** Runtime environment.
--   **Fastify (v5.x):** High-performance web framework.
--   **PostgreSQL:** Relational database.
--   **Docker & Docker Compose:** Containerization.
--   **Vitest:** Testing framework.
--   **Webhook-First with Polling Fallback:** Synchronization strategy.
--   **Standalone Service:** Decoupled architecture.
--   **Environment Variable Configuration.**
--   **OVH-based CDN for Images.**
+## 3. Known Issues and Bugs
 
-## 4. Project Structure
-(The structure itself is largely unchanged, but the new migration file is relevant)
-```
-dolibarr-middleware/
-├── migrations/                 # SQL database migration files
-│   ├── 001_initial_schema.sql
-│   ├── 002_update_product_images_for_ovh_cdn.sql
-│   └── 003_product_many_to_many_categories.sql # New
-# ... (rest of structure is the same)
-```
+-   **Database Connectivity:** The application intermittently fails to connect to the Supabase database, resulting in `ENETUNREACH` errors. This is likely due to an IPv6 issue. A temporary fix has been implemented by forcing IPv4, but a more permanent solution may be required.
+-   **Webhook Security:** The webhook secret check is currently disabled for testing purposes. This should be enabled in a production environment.
+-   **Payload Parsing:** The application has had issues parsing payloads from Dolibarr webhooks. The current implementation should be monitored to ensure it is working correctly.
+-   **Logger:** The logger has had issues with being passed correctly to all functions. This should be monitored to ensure that all errors are being logged correctly.
 
-**Key Files & Roles:**
-(Descriptions for `syncService.js`, `dolibarrApiService.js`, `productController.js` should implicitly include the new many-to-many category logic and API adaptations).
+## 4. Setup and Installation
 
-## 5. Setup and Installation
-(Largely the same, emphasize applying all migrations)
+1.  **Clone the repository.**
+2.  **Install dependencies:** `npm install`
+3.  **Create a `.env` file** in the root of the project and copy the content from `.env.example`.
+4.  **Fill in the environment variables** in the `.env` file with your specific configuration.
+5.  **Deploy to Render.**
 
-**Steps:**
-1.  ...
-2.  ...
-3.  ...
-4.  **Install Dependencies:** `npm install` (Fastify 5.x and compatible plugins are now used).
+## 5. Running the Application Locally (for development)
 
-## 6. Running the Application
-
-### B. Applying Database Migrations
-Execute the SQL migration files from the `migrations/` directory in order:
-    *   `migrations/001_initial_schema.sql`
-    *   `migrations/002_update_product_images_for_ovh_cdn.sql`
-    *   `migrations/003_product_many_to_many_categories.sql`
-    *   **Important for Webhooks:** A migration to add `parent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL` to the `categories` table is crucial for correct hierarchical updates when parent categories are deleted via webhooks. If not already present, this should be added. Example:
-        ```sql
-        -- Migration: 004_add_parent_id_fk_to_categories.sql (example name)
-        BEGIN;
-        ALTER TABLE categories ADD COLUMN IF NOT EXISTS parent_id INTEGER DEFAULT NULL;
-        ALTER TABLE categories ADD CONSTRAINT fk_categories_parent_id FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL;
-        COMMIT;
-        ```
-    *(And any subsequent migration files)*
-    *Example using `psql` (if installed locally):*
+1.  **Install Docker and Docker Compose.**
+2.  **Run `docker-compose up --build`** to start the application and a local PostgreSQL database.
+3.  **Apply database migrations:**
     ```bash
-    psql -h localhost -p 5433 -U YOUR_DB_USER -d YOUR_DB_NAME -f migrations/001_initial_schema.sql
-    psql -h localhost -p 5433 -U YOUR_DB_USER -d YOUR_DB_NAME -f migrations/002_update_product_images_for_ovh_cdn.sql
-    psql -h localhost -p 5433 -U YOUR_DB_USER -d YOUR_DB_NAME -f migrations/003_product_many_to_many_categories.sql
+    docker-compose exec app npm run migrate:latest
     ```
-
-### C. Triggering Initial Data Sync
-The `sync:initial` script in `package.json` triggers the full data synchronization. This is important to run before enabling webhooks to ensure the local database has a baseline.
-```bash
-docker-compose exec app npm run sync:initial
-```
-
-### D. Configuring Dolibarr Webhooks (New Section)
-To enable real-time updates, configure webhooks in your Dolibarr instance:
-1.  **Access Webhook Module:** Navigate to the Webhooks module in Dolibarr (e.g., Setup -> Modules/Applications -> Webhooks).
-2.  **Create Webhooks:** For each of the following events, create a new webhook:
-    *   `PRODUCT_CREATE`
-    *   `PRODUCT_MODIFY`
-    *   `PRODUCT_DELETE`
-    *   `CATEGORY_CREATE`
-    *   `CATEGORY_MODIFY`
-    *   `CATEGORY_DELETE`
-    *   `STOCK_MOVEMENT` (Covers various stock operations including inventory changes, shipments, etc.)
-3.  **Target URL:** Set the "URL to notify" for each webhook to:
-    `http://<your_middleware_host>:<your_middleware_port>/webhooks/webhook`
-    (Replace `<your_middleware_host>` and `<your_middleware_port>` with the actual host and port where this middleware application is accessible from your Dolibarr server).
-4.  **HTTP Method:** Ensure the method is `POST`.
-5.  **Secret (Optional but Recommended):**
-    *   If you have set the `DOLIBARR_WEBHOOK_SECRET` environment variable for this middleware, generate a strong secret string.
-    *   In Dolibarr's webhook configuration, there should be an option to add a custom HTTP header. Add a header like:
-        *   Header Name: `X-Dolibarr-Webhook-Secret` (Note: The exact header name Dolibarr allows you to configure or sends by default for a secret might vary. Please verify this in your Dolibarr version. This is the header the middleware currently expects.)
-        *   Header Value: Your chosen secret string.
-    *   Ensure the "Type of content" is `application/json`.
-6.  **Encoding:** Usually `UTF-8`.
-7.  **Activate:** Ensure each webhook is active.
-
-**Important Notes for Initial Sync & Webhooks:**
-*   **API Key Permissions:** Essential for all relevant Dolibarr modules (Categories, Products, Stock, etc.).
-*   **Dolibarr Version Compatibility (Tested with v18.0.4):**
-    *   API interactions (endpoints, parameters like category sorting, stock endpoint `/products/{id}/stock`, fetching product categories via `/categories/object/product/{id}`) have been adapted for v18.0.4. Users of other versions must verify these in `dolibarrApiService.js` and field mappings in `syncService.js`.
-    *   Dolibarr may return `404 Not Found` for stock requests if a product has zero stock; this is logged and the sync continues.
-    *   Timestamps from Dolibarr (Unix seconds) are converted to JavaScript Date objects.
-    *   Products are linked to categories via a many-to-many relationship.
-*   **Field Mappings:** Review `transform*` functions in `syncService.js` if issues occur.
-
-## 8. Known Limitations & Technical Debt
-
--   **Dolibarr API Specificity & Versioning:**
-    *   Core API interaction has been significantly refined for Dolibarr v18.0.4 (category fetching/linking, stock endpoint, timestamp conversions). However, users **must always verify and potentially adapt** API calls in `dolibarrApiService.js` and transformations in `syncService.js` for their specific Dolibarr version, configuration, and custom fields.
-    *   The behavior of Dolibarr's API (e.g., 404 for zero-stock items) is handled but is dependent on Dolibarr.
--   **Webhook Payload Parsing:** (Remains a critical TODO)
--   **Image File Synchronization:** (External script still needed)
--   **Database Migrations:** Manual application of `.sql` files. Integration of a migration tool is recommended.
--   (Other points remain largely the same)
-
-## 9. Roadmap & Next Steps (Pending Tasks)
-
-1.  **Dolibarr API Adaptation & Testing (Largely Addressed for v18.0.4 Initial Sync):**
-    *   **Completed for v18.0.4 initial sync:**
-        *   Category fetching defaults and many-to-many linking with products.
-        *   Product stock endpoint corrected and data parsing improved.
-        *   Transformation functions updated for Unix timestamps.
-    *   **Ongoing Verification Needed:** Users should always test with their specific Dolibarr setup and version, especially for less common data or if variants/other modules have complex API responses.
-2.  **CRITICAL: Webhook Implementation & Testing:** (No change - still a top priority)
-    *   The middleware now processes these webhooks to update its local database.
-3.  **Schema Update for Category Hierarchy:**
-    *   Apply the migration to add `parent_id` with `ON DELETE SET NULL` to the `categories` table to ensure correct behavior when parent categories are deleted.
-4.  **Develop External Image Sync Script for OVH:** (No change)
-5.  **Integrate a Database Migration Tool:** (No change)
-5.  **Enhance Test Coverage:** (No change)
-6.  **Refine API Features:**
-    *   Product listing `GET /api/v1/products` now supports filtering by a single `category_id` using the many-to-many relationship.
-    *   Product detail `GET /api/v1/products/:slug` now includes an array of all associated categories.
-    *   Further advanced filtering, sorting, and search capabilities could be added.
-    *   Add detailed response schemas to all API routes in `apiRoutes.js`.
- (Other points remain largely the same)
-
----
-This document aims to provide a comprehensive overview. For specific implementation details, please refer to the source code and inline comments.
+4.  **Trigger initial data sync:**
+    ```bash
+    docker-compose exec app npm run sync:initial
+    ```
+5.  **Access the application** at `http://localhost:3000`.
+6.  **Access the API documentation** at `http://localhost:3000/documentation`.
