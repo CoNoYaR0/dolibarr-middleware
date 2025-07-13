@@ -8,6 +8,7 @@ import apiRoutes from './routes/apiRoutes.js';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
 import fastifyHelmet from '@fastify/helmet';
+import formBody from '@fastify/formbody';
 
 // Instantiate Fastify with logger settings from config
 const fastify = Fastify({
@@ -16,6 +17,9 @@ const fastify = Fastify({
     level: config.server.logLevel,
   },
 });
+
+// Register formbody to handle application/x-www-form-urlencoded
+fastify.register(formBody);
 
 // Register Helmet for security headers
 // It's good to register Helmet early in the lifecycle.
