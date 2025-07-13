@@ -5,17 +5,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const requiredEnvVars = [
-  'DB_USER',
-  'DB_HOST',
-  'DB_NAME',
-  'DB_PASSWORD',
-  'DB_PORT',
   'DOLIBARR_API_URL',
   'DOLIBARR_API_KEY',
-  // 'AWS_ACCESS_KEY_ID', // Will be needed later
-  // 'AWS_SECRET_ACCESS_KEY', // Will be needed later
-  // 'AWS_S3_BUCKET_NAME', // Will be needed later
-  // 'AWS_REGION' // Will be needed later
 ];
 
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -41,6 +32,7 @@ const config = {
     logLevel: process.env.LOG_LEVEL || 'info',
   },
   db: {
+    connectionString: process.env.DATABASE_URL,
     user: process.env.DB_USER,
     host: process.env.DB_HOST,
     database: process.env.DB_NAME,

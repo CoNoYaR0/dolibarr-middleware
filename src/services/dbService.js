@@ -4,13 +4,15 @@ import logger from '../utils/logger.js'; // Import shared logger
 
 const { Pool } = pg;
 
-const dbServiceConfig = {
-  user: config.db.user,
-  host: config.db.host,
-  database: config.db.database,
-  password: config.db.password,
-  port: config.db.port,
-};
+const dbServiceConfig = config.db.connectionString
+  ? { connectionString: config.db.connectionString }
+  : {
+      user: config.db.user,
+      host: config.db.host,
+      database: config.db.database,
+      password: config.db.password,
+      port: config.db.port,
+    };
 
 // SSL configuration based on centralized config
 if (config.db.sslMode && ['require', 'prefer', 'allow', 'verify-ca', 'verify-full'].includes(config.db.sslMode)) {
