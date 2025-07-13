@@ -4,26 +4,20 @@ const { handleWebhook } = syncService; // Destructure to get the named function
 import config from '../config/index.js';
 
 async function webhookRoutes(fastify, options) {
-  fastify.post('/webhook', async (request, reply) => {
-    const { body: payload, headers } = request;
-    // Use request.log provided by Fastify, which is configured in server.js
+  fastify.post('/webhook/:secret', async (request, reply) => {
+    const { body: payload, params, headers } = request;
     const logger = request.log;
 
-    logger.info({ payload }, 'Received webhook payload.');
+    // Security Check: Validate webhook secret from URL parameter
+    const { secret } = params;
+    const expectedSecret = config.dolibarrWebhookSecret;
 
-    // Security Check: Validate webhook secret
-    const expectedSecret = config.dolibarrWebhookSecret || process.env.DOLIBARR_WEBHOOK_SECRET;
-    if (expectedSecret && headers['x-dolibarr-webhook-secret']) {
-      if (headers['x-dolibarr-webhook-secret'] !== expectedSecret) {
-        logger.warn({ providedSecret: headers['x-dolibarr-webhook-secret'], headers }, 'Unauthorized webhook attempt: Invalid secret.');
-        return reply.status(401).send({ error: 'Unauthorized' });
-      }
-      logger.info('Webhook secret validated successfully.');
-    } else if (expectedSecret && !headers['x-dolibarr-webhook-secret']) {
-      logger.warn('⚠️ Webhook received without security header. This is not recommended for production.');
-    } else {
-      logger.info('No webhook secret configured, skipping validation. This is not recommended for production.');
+    if (!expectedSecret || secret !== expectedSecret) {
+      logger.warn({ providedSecret: secret }, 'Unauthorized webhook attempt: Invalid or missing secret in URL.');
+      return reply.status(401).send({ error: 'Unauthorized' });
     }
+
+    logger.info({ payload }, 'Received and authenticated webhook payload.');
 
     if (!payload || typeof payload !== 'object') {
       logger.warn({ payload }, 'Invalid webhook payload: not an object.');
