@@ -9,7 +9,9 @@ const testSecret = 'test-secret-123';
 // Mock the config module before other imports that might use it
 vi.mock('../config/index.js', () => ({
   default: {
-    dolibarrWebhookSecret: 'test-secret-123', // Use literal value to avoid hoisting issues
+    dolibarr: {
+      webhookSecret: 'test-secret-123', // Use literal value to avoid hoisting issues
+    },
   },
 }));
 
