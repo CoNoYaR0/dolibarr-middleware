@@ -175,7 +175,7 @@ async function getProductBySlug(request, reply) {
  * @param {string|number} dolibarrProductId - The Dolibarr ID of the product.
  * @param {object} logger - Optional logger instance.
  */
-async function getProductByDolibarrId(dolibarrProductId, logger = console) {
+async function getProductByDolibarrId(dolibarrProductId, logger) {
   try {
     const queryText = 'SELECT * FROM products WHERE dolibarr_product_id = $1;';
     const { rows } = await db.query(queryText, [dolibarrProductId]);
@@ -197,7 +197,7 @@ async function getProductByDolibarrId(dolibarrProductId, logger = console) {
  * @param {function} transformVariantFn - The function to transform Dolibarr variant data to local DB schema.
  * @param {object} logger - Optional logger instance.
  */
-async function syncProductVariants(localProductId, variantsDataFromApi, transformVariantFn, logger = console) {
+async function syncProductVariants(localProductId, variantsDataFromApi, transformVariantFn, logger) {
   try {
     // Delete existing variants for this product
     const deleteResult = await db.query('DELETE FROM product_variants WHERE product_id = $1 RETURNING dolibarr_variant_id;', [localProductId]);
@@ -256,7 +256,7 @@ async function syncProductVariants(localProductId, variantsDataFromApi, transfor
  *                                  Expected fields from transformProduct.
  * @param {object} logger - Optional logger instance.
  */
-async function addProduct(productPayload, logger = console) {
+async function addProduct(productPayload, logger) {
   const {
     dolibarr_product_id, sku, name, description, long_description, price,
     is_active, slug, dolibarr_created_at, dolibarr_updated_at
@@ -299,7 +299,7 @@ async function addProduct(productPayload, logger = console) {
  * @param {object} productPayload - Data for updating the product.
  * @param {object} logger - Optional logger instance.
  */
-async function updateProductByDolibarrId(dolibarrProductId, productPayload, logger = console) {
+async function updateProductByDolibarrId(dolibarrProductId, productPayload, logger) {
   const {
     sku, name, description, long_description, price,
     is_active, slug, dolibarr_updated_at // dolibarr_created_at is usually not updated
@@ -336,7 +336,7 @@ async function updateProductByDolibarrId(dolibarrProductId, productPayload, logg
  * @param {string|number} dolibarrProductId - The Dolibarr ID of the product to delete.
  * @param {object} logger - Optional logger instance.
  */
-async function deleteProductByDolibarrId(dolibarrProductId, logger = console) {
+async function deleteProductByDolibarrId(dolibarrProductId, logger) {
   try {
     // First, get the local product ID to ensure related data is logged or handled if needed before cascade
     const product = await getProductByDolibarrId(dolibarrProductId, logger);
@@ -363,7 +363,7 @@ async function deleteProductByDolibarrId(dolibarrProductId, logger = console) {
  * @param {number} internalProductId - The local ID of the product.
  * @param {object} logger - Optional logger instance.
  */
-async function clearProductCategoryLinks(internalProductId, logger = console) {
+async function clearProductCategoryLinks(internalProductId, logger) {
   try {
     const { rowCount } = await db.query('DELETE FROM product_categories_map WHERE product_id = $1', [internalProductId]);
     (logger.info || logger)({ internalProductId, clearedLinks: rowCount }, `Cleared ${rowCount} category links for product ID ${internalProductId}.`);
@@ -380,7 +380,7 @@ async function clearProductCategoryLinks(internalProductId, logger = console) {
  * @param {Array<string|number>} arrayOfDolibarrCategoryIds - Array of Dolibarr category IDs to link.
  * @param {object} logger - Optional logger instance.
  */
-async function linkProductToCategories(internalProductId, arrayOfDolibarrCategoryIds, logger = console) {
+async function linkProductToCategories(internalProductId, arrayOfDolibarrCategoryIds, logger) {
   if (!arrayOfDolibarrCategoryIds || arrayOfDolibarrCategoryIds.length === 0) {
     (logger.info || logger)({ internalProductId }, 'No Dolibarr category IDs provided for linking.');
     return 0;
@@ -436,7 +436,7 @@ export default {
  * @param {number} quantity - The stock quantity.
  * @param {object} logger - Optional logger instance.
  */
-async function updateStockLevel(internalProductId, internalVariantId, dolibarrWarehouseId, quantity, logger = console) {
+async function updateStockLevel(internalProductId, internalVariantId, dolibarrWarehouseId, quantity, logger) {
   try {
     // Stock levels table uses product_id (nullable), variant_id (nullable), and warehouse_id (varchar)
     // Ensure warehouse_id is treated as a string as per schema.
