@@ -48,11 +48,11 @@
 -   **Logging & Error Handling (`logger.js`, `server.js`):**
     -   Structured logging (Pino), centralized error handling.
 -   **Deployment (`Dockerfile`, `render.yaml`):**
-    -   `Dockerfile` for containerization and `render.yaml` for deployment to Render.
+    -   `Dockerfile` for containerization and `render.yaml` for deployment to Render (a sample file is provided).
 
 ## 3. Known Issues and Bugs
 
--   **Database Connectivity:** The application intermittently fails to connect to the Supabase database, resulting in `ENETUNREACH` errors. This is likely due to an IPv6 issue. A temporary fix has been implemented by forcing IPv4, but a more permanent solution may be required.
+-   **Database Connectivity:** The application intermittently fails to connect to the Supabase database, resulting in `ENETUNREACH` errors. This is likely due to an IPv6 issue. The connection configuration now no longer forces IPv4 and should work with Supabase hosts that resolve to IPv6 or IPv4.
 -   **Webhook Security:** The webhook secret check is currently disabled for testing purposes. This should be enabled in a production environment.
 -   **Payload Parsing:** The application has had issues parsing payloads from Dolibarr webhooks. The current implementation should be monitored to ensure it is working correctly.
 -   **Logger:** The logger has had issues with being passed correctly to all functions. This should be monitored to ensure that all errors are being logged correctly.
@@ -63,7 +63,9 @@
 2.  **Install dependencies:** `npm install`
 3.  **Create a `.env` file** in the root of the project and copy the content from `.env.example`.
 4.  **Fill in the environment variables** in the `.env` file with your specific configuration.
-5.  **Deploy to Render.**
+5.  **Ensure `DB_PORT` is set to your Supabase port (usually 6543).**
+6.  **Create an environment group** on Render with the variables from `.env.example` and reference it in `render.yaml`.
+7.  **Deploy to Render.**
 
 ## 5. Running the Application Locally (for development)
 
