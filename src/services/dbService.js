@@ -5,14 +5,13 @@ import logger from '../utils/logger.js'; // Import shared logger
 const { Pool } = pg;
 
 const dbServiceConfig = config.db.connectionString
-  ? { connectionString: config.db.connectionString, family: 4 }
+  ? { connectionString: config.db.connectionString }
   : {
       user: config.db.user,
       host: config.db.host,
       database: config.db.database,
       password: config.db.password,
       port: config.db.port,
-      family: 4,
     };
 
 // SSL configuration based on centralized config
