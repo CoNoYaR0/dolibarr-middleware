@@ -10,6 +10,7 @@ const dbServiceConfig = {
   database: config.db.database,
   password: config.db.password,
   port: config.db.port,
+  family: 4,
 };
 
 // SSL configuration based on centralized config
