@@ -12,8 +12,19 @@ async function webhookRoutes(fastify, options) {
     const { secret } = params;
     const expectedSecret = config.dolibarrWebhookSecret;
 
-    if (!expectedSecret || secret !== expectedSecret) {
-      logger.warn({ providedSecret: secret }, 'Unauthorized webhook attempt: Invalid or missing secret in URL.');
+    // Enhanced logging for debugging
+    logger.info({
+        receivedSecret: secret,
+        expectedSecret: expectedSecret,
+        receivedLength: secret ? secret.length : 0,
+        expectedLength: expectedSecret ? expectedSecret.length : 0,
+    }, 'Comparing webhook secrets.');
+
+    if (!expectedSecret || !secret || secret.trim() !== expectedSecret.trim()) {
+      logger.warn({
+          providedSecret: secret,
+          match: false,
+      }, 'Unauthorized webhook attempt: Invalid or missing secret in URL.');
       return reply.status(401).send({ error: 'Unauthorized' });
     }
 
