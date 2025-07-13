@@ -52,7 +52,7 @@
 
 ## 3. Known Issues and Recommendations
 
--   **Webhook Security:** The webhook secret check is currently disabled. For a production environment, it is highly recommended to enable this check. This will require a mechanism to securely transmit a secret from Dolibarr with each webhook.
+-   **Webhook Security:** Webhook security is enforced by including a secret in the URL. For this to work, you must set the `DOLIBARR_WEBHOOK_SECRET` environment variable. The webhook URL in Dolibarr should then be configured as `https://<your-app-url>/webhooks/webhook/<your-secret-here>`.
 -   **Payload Parsing:** The application's payload parsing for Dolibarr webhooks should be monitored to ensure it robustly handles all expected data formats and edge cases.
 -   **Logger:** The logger implementation should be reviewed to ensure consistent and comprehensive logging across all services and functions.
 
