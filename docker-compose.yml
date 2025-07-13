@@ -26,33 +26,8 @@ services:
       # - DB_PASSWORD=${DB_PASSWORD}
       # - DB_NAME=${DB_NAME}
       # - DB_PORT=5432
-    depends_on:
-      db:
-        condition: service_healthy # Wait for db to be healthy
     command: npm run dev # Use dev script for hot-reloading with --watch
 
-  db:
-    image: postgres:15-alpine
-    container_name: dolibarr_middleware_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${DB_USER:-admin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-password123} # Change this in your .env for security
-      POSTGRES_DB: ${DB_NAME:-dolibarr_middleware_dev_db}
-    ports:
-      - "${DB_EXTERNAL_PORT:-5433}:${DB_PORT:-5432}" # Expose DB port to host (e.g., for pgAdmin), maps container 5432 to host 5433
-    volumes:
-      - postgres_data:/var/lib/postgresql/data # Persist data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d ${DB_NAME:-dolibarr_middleware_dev_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-
-volumes:
-  postgres_data: # Defines the named volume for data persistence
-    driver: local
 networks:
   default:
     name: dolibarr_middleware_network

@@ -54,7 +54,7 @@ async function getAllCategories(request, reply) {
  * @param {number} id - The local primary key ID of the category.
  * @param {object} logger - Optional logger instance.
  */
-async function getCategoryById(id, logger = console) {
+async function getCategoryById(id, logger) {
   try {
     const queryText = `
       SELECT id, name, description, dolibarr_category_id, parent_id, parent_dolibarr_category_id,
@@ -78,7 +78,7 @@ async function getCategoryById(id, logger = console) {
  * @param {string|number} dolibarrId - The Dolibarr ID of the category.
  * @param {object} logger - Optional logger instance.
  */
-async function getCategoryByDolibarrId(dolibarrId, logger = console) {
+async function getCategoryByDolibarrId(dolibarrId, logger) {
   try {
     const queryText = `
       SELECT id, name, description, dolibarr_category_id, parent_id, parent_dolibarr_category_id,
@@ -105,7 +105,7 @@ async function getCategoryByDolibarrId(dolibarrId, logger = console) {
  *                                   dolibarr_created_at, dolibarr_updated_at.
  * @param {object} logger - Optional logger instance.
  */
-async function addCategory(categoryPayload, logger = console) {
+async function addCategory(categoryPayload, logger) {
   const {
     dolibarr_category_id, name, description, parent_id, parent_dolibarr_category_id,
     dolibarr_created_at, dolibarr_updated_at
@@ -147,7 +147,7 @@ async function addCategory(categoryPayload, logger = console) {
  *                                   parent_dolibarr_category_id, dolibarr_updated_at.
  * @param {object} logger - Optional logger instance.
  */
-async function updateCategoryByDolibarrId(dolibarrId, categoryPayload, logger = console) {
+async function updateCategoryByDolibarrId(dolibarrId, categoryPayload, logger) {
   const {
     name, description, parent_id, parent_dolibarr_category_id,
     dolibarr_updated_at // dolibarr_created_at is usually not updated
@@ -183,7 +183,7 @@ async function updateCategoryByDolibarrId(dolibarrId, categoryPayload, logger = 
  * @param {string|number} dolibarrId - The Dolibarr ID of the category to delete.
  * @param {object} logger - Optional logger instance.
  */
-async function deleteCategoryByDolibarrId(dolibarrId, logger = console) {
+async function deleteCategoryByDolibarrId(dolibarrId, logger) {
   try {
     const queryText = 'DELETE FROM categories WHERE dolibarr_category_id = $1 RETURNING *;';
     const { rows } = await db.query(queryText, [dolibarrId]);
