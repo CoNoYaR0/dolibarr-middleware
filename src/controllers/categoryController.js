@@ -68,7 +68,7 @@ async function getCategoryById(id, logger) {
     }
     return rows[0];
   } catch (error) {
-    (logger.error || logger)({ err: error, categoryId: id }, 'Error in getCategoryById');
+    logger.error({ err: error, categoryId: id }, 'Error in getCategoryById');
     throw error;
   }
 }
@@ -92,7 +92,7 @@ async function getCategoryByDolibarrId(dolibarrId, logger) {
     }
     return rows[0];
   } catch (error) {
-    (logger.error || logger)({ err: error, dolibarrCategoryId: dolibarrId }, 'Error in getCategoryByDolibarrId');
+    logger.error({ err: error, dolibarrCategoryId: dolibarrId }, 'Error in getCategoryByDolibarrId');
     throw error;
   }
 }
@@ -131,10 +131,10 @@ async function addCategory(categoryPayload, logger) {
       dolibarr_category_id, name, description, parent_id, parent_dolibarr_category_id,
       dolibarr_created_at, dolibarr_updated_at
     ]);
-    (logger.info || logger)({ newCategory: rows[0] }, `Category added/updated: ${name}`);
+    logger.info({ newCategory: rows[0] }, `Category added/updated: ${name}`);
     return rows[0];
   } catch (error) {
-    (logger.error || logger)({ err: error, categoryPayload }, 'Error in addCategory');
+    logger.error({ err: error, categoryPayload }, 'Error in addCategory');
     throw error;
   }
 }
@@ -167,13 +167,13 @@ async function updateCategoryByDolibarrId(dolibarrId, categoryPayload, logger) {
     ]);
 
     if (rows.length === 0) {
-      (logger.warn || logger)({ dolibarrCategoryId: dolibarrId }, `Category with Dolibarr ID ${dolibarrId} not found for update.`);
+      logger.warn({ dolibarrCategoryId: dolibarrId }, `Category with Dolibarr ID ${dolibarrId} not found for update.`);
       return null;
     }
-    (logger.info || logger)({ updatedCategory: rows[0] }, `Category updated: ${name}`);
+    logger.info({ updatedCategory: rows[0] }, `Category updated: ${name}`);
     return rows[0];
   } catch (error) {
-    (logger.error || logger)({ err: error, dolibarrCategoryId: dolibarrId, categoryPayload }, 'Error in updateCategoryByDolibarrId');
+    logger.error({ err: error, dolibarrCategoryId: dolibarrId, categoryPayload }, 'Error in updateCategoryByDolibarrId');
     throw error;
   }
 }
@@ -189,13 +189,13 @@ async function deleteCategoryByDolibarrId(dolibarrId, logger) {
     const { rows } = await db.query(queryText, [dolibarrId]);
 
     if (rows.length === 0) {
-      (logger.warn || logger)({ dolibarrCategoryId: dolibarrId }, `Category with Dolibarr ID ${dolibarrId} not found for deletion.`);
+      logger.warn({ dolibarrCategoryId: dolibarrId }, `Category with Dolibarr ID ${dolibarrId} not found for deletion.`);
       return null;
     }
-    (logger.info || logger)({ deletedCategory: rows[0] }, `Category deleted (Dolibarr ID: ${dolibarrId})`);
+    logger.info({ deletedCategory: rows[0] }, `Category deleted (Dolibarr ID: ${dolibarrId})`);
     return rows[0]; // Returns the deleted category data
   } catch (error) {
-    (logger.error || logger)({ err: error, dolibarrCategoryId: dolibarrId }, 'Error in deleteCategoryByDolibarrId');
+    logger.error({ err: error, dolibarrCategoryId: dolibarrId }, 'Error in deleteCategoryByDolibarrId');
     throw error; // Rethrow to be handled by service/route layer
   }
 }

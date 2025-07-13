@@ -184,7 +184,7 @@ async function getProductByDolibarrId(dolibarrProductId, logger) {
     }
     return rows[0];
   } catch (error) {
-    (logger.error || logger.info)({ err: error, dolibarrProductId }, 'Error in getProductByDolibarrId');
+    logger.error({ err: error, dolibarrProductId }, 'Error in getProductByDolibarrId');
     throw error;
   }
 }
@@ -202,18 +202,18 @@ async function syncProductVariants(localProductId, variantsDataFromApi, transfor
     // Delete existing variants for this product
     const deleteResult = await db.query('DELETE FROM product_variants WHERE product_id = $1 RETURNING dolibarr_variant_id;', [localProductId]);
     if (deleteResult.rowCount > 0) {
-      (logger.info || logger)({ localProductId, count: deleteResult.rowCount, deleted_dolibarr_ids: deleteResult.rows.map(r => r.dolibarr_variant_id) }, `Deleted ${deleteResult.rowCount} existing variants for product.`);
+      logger.info({ localProductId, count: deleteResult.rowCount, deleted_dolibarr_ids: deleteResult.rows.map(r => r.dolibarr_variant_id) }, `Deleted ${deleteResult.rowCount} existing variants for product.`);
     }
 
     if (!variantsDataFromApi || variantsDataFromApi.length === 0) {
-      (logger.info || logger)({ localProductId }, 'No new variants data provided from API. All existing variants (if any) have been cleared.');
+      logger.info({ localProductId }, 'No new variants data provided from API. All existing variants (if any) have been cleared.');
       return;
     }
 
     let upsertedCount = 0;
     for (const dolibarrVariant of variantsDataFromApi) {
       if (!dolibarrVariant.id) {
-        (logger.warn || logger)({ localProductId, variantData: dolibarrVariant }, 'Skipping variant due to missing Dolibarr variant ID.');
+        logger.warn({ localProductId, variantData: dolibarrVariant }, 'Skipping variant due to missing Dolibarr variant ID.');
         continue;
       }
       // The transformVariantFn is expected to be passed from syncService,
@@ -242,10 +242,10 @@ async function syncProductVariants(localProductId, variantsDataFromApi, transfor
       ]);
       upsertedCount++;
     }
-    (logger.info || logger)({ localProductId, count: upsertedCount }, `Upserted ${upsertedCount} variants for product.`);
+    logger.info({ localProductId, count: upsertedCount }, `Upserted ${upsertedCount} variants for product.`);
 
   } catch (error) {
-    (logger.error || logger.info)({ err: error, localProductId }, 'Error in syncProductVariants');
+    logger.error({ err: error, localProductId }, 'Error in syncProductVariants');
     throw error;
   }
 }
@@ -285,10 +285,10 @@ async function addProduct(productPayload, logger) {
       dolibarr_product_id, sku, name, description, long_description, price,
       is_active, slug, dolibarr_created_at, dolibarr_updated_at
     ]);
-    (logger.info || logger)({ newProduct: rows[0] }, `Product added/updated: ${name} (Dolibarr ID: ${dolibarr_product_id})`);
+    logger.info({ newProduct: rows[0] }, `Product added/updated: ${name} (Dolibarr ID: ${dolibarr_product_id})`);
     return rows[0];
   } catch (error) {
-    (logger.error || logger.info)({ err: error, productPayload }, 'Error in addProduct');
+    logger.error({ err: error, productPayload }, 'Error in addProduct');
     throw error;
   }
 }
@@ -319,13 +319,13 @@ async function updateProductByDolibarrId(dolibarrProductId, productPayload, logg
     ]);
 
     if (rows.length === 0) {
-      (logger.warn || logger.info)({ dolibarrProductId }, `Product with Dolibarr ID ${dolibarrProductId} not found for update.`);
+      logger.warn({ dolibarrProductId }, `Product with Dolibarr ID ${dolibarrProductId} not found for update.`);
       return null;
     }
-    (logger.info || logger)({ updatedProduct: rows[0] }, `Product updated: ${name} (Dolibarr ID: ${dolibarrProductId})`);
+    logger.info({ updatedProduct: rows[0] }, `Product updated: ${name} (Dolibarr ID: ${dolibarrProductId})`);
     return rows[0];
   } catch (error) {
-    (logger.error || logger.info)({ err: error, dolibarrProductId, productPayload }, 'Error in updateProductByDolibarrId');
+    logger.error({ err: error, dolibarrProductId, productPayload }, 'Error in updateProductByDolibarrId');
     throw error;
   }
 }
@@ -341,7 +341,7 @@ async function deleteProductByDolibarrId(dolibarrProductId, logger) {
     // First, get the local product ID to ensure related data is logged or handled if needed before cascade
     const product = await getProductByDolibarrId(dolibarrProductId, logger);
     if (!product) {
-      (logger.warn || logger.info)({ dolibarrProductId }, `Product with Dolibarr ID ${dolibarrProductId} not found for deletion.`);
+      logger.warn({ dolibarrProductId }, `Product with Dolibarr ID ${dolibarrProductId} not found for deletion.`);
       return null;
     }
 
@@ -350,10 +350,10 @@ async function deleteProductByDolibarrId(dolibarrProductId, logger) {
     const queryText = 'DELETE FROM products WHERE dolibarr_product_id = $1 RETURNING *;';
     const { rows } = await db.query(queryText, [dolibarrProductId]);
 
-    (logger.info || logger)({ deletedProduct: rows[0] }, `Product deleted (Dolibarr ID: ${dolibarrProductId})`);
+    logger.info({ deletedProduct: rows[0] }, `Product deleted (Dolibarr ID: ${dolibarrProductId})`);
     return rows[0];
   } catch (error) {
-    (logger.error || logger.info)({ err: error, dolibarrProductId }, 'Error in deleteProductByDolibarrId');
+    logger.error({ err: error, dolibarrProductId }, 'Error in deleteProductByDolibarrId');
     throw error;
   }
 }
@@ -366,10 +366,10 @@ async function deleteProductByDolibarrId(dolibarrProductId, logger) {
 async function clearProductCategoryLinks(internalProductId, logger) {
   try {
     const { rowCount } = await db.query('DELETE FROM product_categories_map WHERE product_id = $1', [internalProductId]);
-    (logger.info || logger)({ internalProductId, clearedLinks: rowCount }, `Cleared ${rowCount} category links for product ID ${internalProductId}.`);
+    logger.info({ internalProductId, clearedLinks: rowCount }, `Cleared ${rowCount} category links for product ID ${internalProductId}.`);
     return rowCount;
   } catch (error) {
-    (logger.error || logger.info)({ err: error, internalProductId }, 'Error in clearProductCategoryLinks');
+    logger.error({ err: error, internalProductId }, 'Error in clearProductCategoryLinks');
     throw error;
   }
 }
@@ -382,7 +382,7 @@ async function clearProductCategoryLinks(internalProductId, logger) {
  */
 async function linkProductToCategories(internalProductId, arrayOfDolibarrCategoryIds, logger) {
   if (!arrayOfDolibarrCategoryIds || arrayOfDolibarrCategoryIds.length === 0) {
-    (logger.info || logger)({ internalProductId }, 'No Dolibarr category IDs provided for linking.');
+    logger.info({ internalProductId }, 'No Dolibarr category IDs provided for linking.');
     return 0;
   }
 
@@ -401,15 +401,15 @@ async function linkProductToCategories(internalProductId, arrayOfDolibarrCategor
           [internalProductId, localCategoryId]
         );
         linkedCount++;
-        (logger.info || logger)({ internalProductId, localCategoryId, dolibarrCatId }, `Linked product to category.`);
+        logger.info({ internalProductId, localCategoryId, dolibarrCatId }, `Linked product to category.`);
       } else {
-        (logger.warn || logger.info)({ internalProductId, dolibarrCatId }, `Category with Dolibarr ID ${dolibarrCatId} not found for linking.`);
+        logger.warn({ internalProductId, dolibarrCatId }, `Category with Dolibarr ID ${dolibarrCatId} not found for linking.`);
       }
     }
-    (logger.info || logger)({ internalProductId, linkedCount }, `Finished linking product to categories.`);
+    logger.info({ internalProductId, linkedCount }, `Finished linking product to categories.`);
     return linkedCount;
   } catch (error) {
-    (logger.error || logger.info)({ err: error, internalProductId, arrayOfDolibarrCategoryIds }, 'Error in linkProductToCategories');
+    logger.error({ err: error, internalProductId, arrayOfDolibarrCategoryIds }, 'Error in linkProductToCategories');
     throw error;
   }
 }
@@ -448,7 +448,7 @@ async function updateStockLevel(internalProductId, internalVariantId, dolibarrWa
     // However, our logic usually has product_id.
     // Let's ensure internalProductId is always provided if internalVariantId is null.
     if (internalVariantId === null && internalProductId === null) {
-      (logger.error || logger.info)({ internalProductId, internalVariantId, dolibarrWarehouseId, quantity }, 'Error in updateStockLevel: internalProductId cannot be null if internalVariantId is null.');
+      logger.error({ internalProductId, internalVariantId, dolibarrWarehouseId, quantity }, 'Error in updateStockLevel: internalProductId cannot be null if internalVariantId is null.');
       throw new Error('internalProductId cannot be null if internalVariantId is null for stock level update.');
     }
 
@@ -481,10 +481,10 @@ async function updateStockLevel(internalProductId, internalVariantId, dolibarrWa
       now
     ]);
 
-    (logger.info || logger)({ stockLevel: rows[0] }, `Stock level updated for product/variant in warehouse ${whId}.`);
+    logger.info({ stockLevel: rows[0] }, `Stock level updated for product/variant in warehouse ${whId}.`);
     return rows[0];
   } catch (error) {
-    (logger.error || logger.info)({ err: error, internalProductId, internalVariantId, dolibarrWarehouseId, quantity }, 'Error in updateStockLevel');
+    logger.error({ err: error, internalProductId, internalVariantId, dolibarrWarehouseId, quantity }, 'Error in updateStockLevel');
     throw error;
   }
 }
