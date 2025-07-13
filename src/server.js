@@ -1,7 +1,7 @@
 // Import Fastify
 import Fastify from 'fastify';
 import config from './config/index.js'; // Import the centralized config
-// import dbService from './services/dbService.js'; // Will be used later
+import dbService from './services/dbService.js'; // Will be used later
 import webhookRoutes from './routes/webhookRoutes.js';
 import pollingService from './services/pollingService.js';
 import apiRoutes from './routes/apiRoutes.js';
@@ -167,12 +167,13 @@ const start = async () => {
     fastify.log.info(
       `Server listening on http://${config.server.host}:${config.server.port} in ${config.env} mode`
     );
-    // Test DB connection on startup (optional)
-    // if (await dbService.testConnection()) {
-    //   fastify.log.info('Database connection successful.');
-    // } else {
-    //   fastify.log.error('Database connection failed on startup!');
-    // }
+    // Test DB connection on startup
+    if (await dbService.testConnection()) {
+      fastify.log.info('Database connection successful.');
+    } else {
+      fastify.log.error('Database connection failed on startup!');
+      process.exit(1);
+    }
 
     // Start polling service if enabled
     if (config.polling.enabled) {
