@@ -3,6 +3,9 @@ import db from './dbService.js';
 import config from '../config/index.js';
 import path from 'path';
 import logger from '../utils/logger.js';
+import categoryController from '../controllers/categoryController.js';
+import productController from '../controllers/productController.js';
+import dolibarrApiService from './dolibarrApiService.js';
 
 // --- Transformation Functions ---
 
@@ -415,16 +418,6 @@ export default {
 };
 
 // --- Webhook Processing Logic ---
-
-// Placeholder functions for each webhook event type
-// These will be fleshed out in subsequent steps.
-// They need to be async as they will perform DB operations and API calls.
-
-// Forward declare controllers and services used by webhook handlers
-import categoryController from '../controllers/categoryController.js';
-import productController from '../controllers/productController.js';
-import dolibarrApiService from './dolibarrApiService.js';
-
 
 async function handleProductCreate(objectData, eventLogger) {
   eventLogger.info({ dolibarrProductId: objectData.id, data: objectData }, 'EVENT: PRODUCT_CREATE received. Processing...');
