@@ -13,14 +13,14 @@ async function webhookRoutes(fastify, options) {
 
     // Security Check: Validate webhook secret
     const expectedSecret = config.dolibarrWebhookSecret || process.env.DOLIBARR_WEBHOOK_SECRET;
-    if (expectedSecret) {
-      const providedSecret = headers['x-dolibarr-webhook-secret']; // Placeholder header
-      if (providedSecret !== expectedSecret) {
-        logger.warn({ providedSecret, headers }, 'Unauthorized webhook attempt: Invalid or missing secret.');
-        reply.status(401).send({ error: 'Unauthorized' });
-        return;
+    if (expectedSecret && headers['x-dolibarr-webhook-secret']) {
+      if (headers['x-dolibarr-webhook-secret'] !== expectedSecret) {
+        logger.warn({ providedSecret: headers['x-dolibarr-webhook-secret'], headers }, 'Unauthorized webhook attempt: Invalid secret.');
+        return reply.status(401).send({ error: 'Unauthorized' });
       }
       logger.info('Webhook secret validated successfully.');
+    } else if (expectedSecret && !headers['x-dolibarr-webhook-secret']) {
+      logger.warn('⚠️ Webhook received without security header. This is not recommended for production.');
     } else {
       logger.info('No webhook secret configured, skipping validation. This is not recommended for production.');
     }
