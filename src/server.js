@@ -21,15 +21,21 @@ const fastify = Fastify({
 // Register formbody to handle application/x-www-form-urlencoded
 fastify.register(formBody, {
   parser: async (str) => {
+    console.log('Raw string received by parser:', str);
     const querystring = await import('node:querystring');
     const parsed = querystring.parse(str);
+    console.log('Parsed querystring:', parsed);
     const keys = Object.keys(parsed);
     if (keys.length > 0) {
         const firstKey = keys[0];
+        console.log('First key:', firstKey);
         if (firstKey.trim().startsWith('{') && firstKey.trim().endsWith('}')) {
             try {
-                return JSON.parse(firstKey);
+                const jsonPayload = JSON.parse(firstKey);
+                console.log('Parsed JSON payload:', jsonPayload);
+                return jsonPayload;
             } catch (e) {
+                console.error('Error parsing JSON:', e);
                 // Not a valid JSON, fall back to the parsed object
             }
         }
