@@ -12,12 +12,16 @@ async function webhookRoutes(fastify, options) {
     // Handle stringified JSON payload from Dolibarr
     if (typeof payload === 'object' && payload !== null) {
       const keys = Object.keys(payload);
-      if (keys.length === 1 && keys[0].startsWith('{') && keys[0].endsWith('}')) {
-        try {
-          payload = JSON.parse(keys[0]);
-        } catch (e) {
-          logger.error({ err: e, payload: keys[0] }, 'Error parsing stringified JSON payload.');
-          return reply.status(400).send({ error: 'Invalid JSON format in payload.' });
+      if (keys.length > 0) {
+        const firstKey = keys[0];
+        // A simple check to see if the key is likely a JSON string
+        if (firstKey.trim().startsWith('{') && firstKey.trim().endsWith('}')) {
+          try {
+            payload = JSON.parse(firstKey);
+          } catch (e) {
+            logger.error({ err: e, payload: firstKey }, 'Error parsing stringified JSON payload.');
+            // Fallback to original payload or handle error
+          }
         }
       }
     }
