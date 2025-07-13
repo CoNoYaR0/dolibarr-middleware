@@ -64,7 +64,8 @@
 3.  **Create a `.env` file** in the root of the project and copy the content from `.env.example`.
 4.  **Fill in the environment variables** in the `.env` file with your specific configuration.
 5.  **Ensure `DB_PORT` is set to your Supabase port (usually 6543).**
-6.  **Deploy to Render.**
+6.  **Create an environment group** on Render with the variables from `.env.example` and reference it in `render.yaml`.
+7.  **Deploy to Render.**
 
 ## 5. Running the Application Locally (for development)
 

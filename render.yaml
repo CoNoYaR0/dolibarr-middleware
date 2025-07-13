@@ -5,7 +5,10 @@ services:
     plan: free
     region: oregon
     branch: main
+    dockerfilePath: Dockerfile
+    dockerContext: .
     healthCheckPath: /health
     envVars:
+      - fromGroup: dolibarr-env
       - key: NODE_ENV
         value: production
