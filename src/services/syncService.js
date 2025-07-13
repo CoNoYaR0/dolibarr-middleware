@@ -811,5 +811,3 @@ async function handleWebhook(payload, parentLogger) {
     throw error;
   }
 }
-
-[end of src/services/syncService.js]
