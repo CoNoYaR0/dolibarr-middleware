@@ -19,7 +19,24 @@ const fastify = Fastify({
 });
 
 // Register formbody to handle application/x-www-form-urlencoded
-fastify.register(formBody);
+fastify.register(formBody, {
+  parser: async (str) => {
+    const querystring = await import('node:querystring');
+    const parsed = querystring.parse(str);
+    const keys = Object.keys(parsed);
+    if (keys.length > 0) {
+        const firstKey = keys[0];
+        if (firstKey.trim().startsWith('{') && firstKey.trim().endsWith('}')) {
+            try {
+                return JSON.parse(firstKey);
+            } catch (e) {
+                // Not a valid JSON, fall back to the parsed object
+            }
+        }
+    }
+    return parsed;
+  },
+});
 
 // Register Helmet for security headers
 // It's good to register Helmet early in the lifecycle.

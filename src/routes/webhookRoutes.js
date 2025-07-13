@@ -5,22 +5,9 @@ import config from '../config/index.js';
 
 async function webhookRoutes(fastify, options) {
   fastify.post('/webhook', async (request, reply) => {
-    let { body: payload, headers } = request;
+    const { body: payload, headers } = request;
     // Use request.log provided by Fastify, which is configured in server.js
     const logger = request.log;
-
-    // Handle stringified JSON payload from Dolibarr
-    if (typeof payload === 'object' && payload !== null) {
-      const keys = Object.keys(payload);
-      if (keys.length === 1 && keys[0].startsWith('{') && keys[0].endsWith('}')) {
-        try {
-          payload = JSON.parse(keys[0]);
-        } catch (e) {
-          logger.error({ err: e, payload: keys[0] }, 'Error parsing stringified JSON payload.');
-          return reply.status(400).send({ error: 'Invalid JSON format in payload.' });
-        }
-      }
-    }
 
     logger.info({ payload }, 'Received webhook payload.');
 
