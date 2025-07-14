@@ -62,6 +62,7 @@ const config = {
     stockSyncInterval: process.env.POLLING_STOCK_SYNC_INTERVAL || '0 */1 * * *', // Default: every hour for stock
     // productSyncInterval: process.env.POLLING_PRODUCT_SYNC_INTERVAL || '0 2 * * *', // Default: daily at 2 AM for full product sync
   },
+  runInitialSync: process.env.RUN_INITIAL_SYNC === 'true' || false,
   // Add other configurations as needed
   // e.g., webhookSecret: process.env.DOLIBARR_WEBHOOK_SECRET already added
 };

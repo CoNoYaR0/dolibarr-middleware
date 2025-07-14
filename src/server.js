@@ -180,6 +180,13 @@ const start = async () => {
       pollingService.start();
     }
 
+    // Run initial sync if enabled
+    if (config.runInitialSync) {
+      syncService.runInitialSync().catch(err => {
+        fastify.log.error(err, 'Initial sync failed');
+      });
+    }
+
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

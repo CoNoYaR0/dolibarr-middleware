@@ -160,13 +160,15 @@ Follow these instructions to set up and run the project in your local developmen
 
 ### Initial Data Synchronization
 
-After the application is running, you need to perform an initial data synchronization to populate the local database with data from your Dolibarr instance.
+The initial data synchronization is now automated and will run when the application starts if the `RUN_INITIAL_SYNC` environment variable is set to `true`.
 
-To run the initial sync, execute the following command in a separate terminal:
+To enable the initial sync, add the following line to your `.env` file:
 
-```bash
-docker-compose exec app npm run sync:initial
+```env
+RUN_INITIAL_SYNC=true
 ```
+
+When you deploy the application with this environment variable set to `true`, it will automatically perform a full synchronization of all data from Dolibarr. Once the initial sync is complete, you can set this variable to `false` or remove it to prevent the sync from running on every application restart.
 
 ### API Documentation
 
