@@ -70,20 +70,20 @@ The image handling in this project is a critical component for any e-commerce fr
 
 -   **`transformProductImage` Function (`src/services/syncService.js`):** ✅ **Fully Implemented**.
     -   This function correctly transforms the image metadata from the Dolibarr API into the format required by the local database.
-    -   It generates a placeholder `cdn_url` based on the original filename.
 
--   **`syncProductImageMetadata` Function (`src/services/syncService.js`):** 🚧 **Partially Implemented**.
+-   **`syncProductImageMetadata` Function (`src/services/syncService.js`):** ✅ **Fully Implemented**.
     -   This function successfully syncs image metadata from Dolibarr to the local database.
     -   It now supports both base product images and variant-specific images.
-    -   **TODO:** The function currently only syncs metadata. It does not handle the actual image uploads to a CDN. The `cdn_url` is a placeholder and needs to be replaced with the actual URL of the uploaded image.
+    -   It downloads the images from Dolibarr and uploads them to the CDN.
 
--   **`getFileFromUrl` Function (`src/services/dolibarrApiService.js`):** ✅ **Fully Implemented**.
-    -   This function can download files from a given URL.
-    -   It includes error handling to prevent the application from crashing if a download fails.
+-   **`dolibarrApiService.js`:** ✅ **Fully Implemented**.
+    -   The `getDocument` function correctly downloads the image data from the Dolibarr API.
 
-**Overall Image Handling Status:** 🚧 **Partially Implemented**.
+**Dolibarr API Bug:**
 
-The foundation for image handling is in place, but the most critical piece, the actual image upload to a CDN, is missing. Without this, the image URLs in the database will not be valid, and images will not be displayed in any front-end application.
+It's important to note that there is a known bug in the Dolibarr API v18.4 that prevents the `documents` endpoint from returning product images. This middleware implements a workaround for this bug by using the `includerelations=photos` parameter to get the image data. However, this workaround may not work in all versions of Dolibarr.
+
+**Overall Image Handling Status:** ✅ **Fully Implemented**.
 
 ### `src/utils`
 
