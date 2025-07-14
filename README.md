@@ -60,25 +60,70 @@ Here is a detailed audit of each file in the repository:
 -   `pollingService.js`: ✅ **Fully Implemented**.
 -   `syncService.js`: ✅ **Fully Implemented**.
 
-### Image Handling Audit
+## Image Handling
 
-The image handling in this project is a critical component for any e-commerce front-end. Here's a detailed breakdown of its current implementation status:
+The image synchronization is handled by a separate PHP script, `image_sync.php`, which is triggered by a webhook in Dolibarr. This script mirrors the product images from the Dolibarr `documents/produit` directory to the CDN directory.
 
--   **`product_images` Table Schema (`migrations/001_initial_schema.sql` and `migrations/002_update_product_images_for_ovh_cdn.sql`):** ✅ **Fully Implemented**.
-    -   The schema is well-defined, with columns for `cdn_url`, `alt_text`, `display_order`, and other essential metadata.
-    -   It supports associating images with both base products and variants.
+**`image_sync.php`**
 
--   **`transformProductImage` Function (`src/services/syncService.js`):** ✅ **Fully Implemented**.
-    -   This function correctly transforms the image metadata from the Dolibarr API into the format required by the local database.
+```php
+<?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
--   **`syncProductImageMetadata` Function (`src/services/syncService.js`):** ✅ **Fully Implemented**.
-    -   This function successfully syncs image metadata from Dolibarr to the local database.
-    -   It now supports both base product images and variant-specific images.
-    -   It downloads the images from Dolibarr and uploads them to the CDN.
+// Chemins relatifs à partir du script
+$dolibarr_documents = realpath(__DIR__ . '/../../documents/produit');
+$cdn_path = realpath(__DIR__ . '/../');
 
--   **`dolibarrApiService.js`:** ✅ **Fully Implemented**.
-    -   The `getDocument` function correctly downloads the image data from the Dolibarr API.
+if (!$dolibarr_documents || !is_dir($dolibarr_documents)) {
+    http_response_code(500);
+    die("Erreur : Le dossier source '$dolibarr_documents' n'existe pas.");
+}
+if (!is_writable($cdn_path)) {
+    http_response_code(500);
+    die("Erreur : Impossible d'écrire dans '$cdn_path'.");
+}
 
+// Fonction de synchro
+function mirror_directory($source, $destination) {
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($source, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::SELF_FIRST
+    );
+
+    foreach ($iterator as $item) {
+        $dest_item = $destination . '/' . $iterator->getSubPathName();
+        if ($item->isDir()) {
+            if (!is_dir($dest_item)) {
+                mkdir($dest_item, 0755, true);
+            }
+        } else {
+            copy($item, $dest_item);
+        }
+    }
+}
+
+mirror_directory($dolibarr_documents, $cdn_path);
+echo "✅ Synchronisation terminée.";
+?>
+```
+
+**Webhook Configuration**
+
+A webhook in Dolibarr should be configured to trigger the `image_sync.php` script whenever a product is created or modified. This will ensure that the images are synchronized in real-time.
+
+1.  **Place the `image_sync.php` script on your server.** A good practice is to place it in a `webhooks` directory at the same level as your Dolibarr installation.
+2.  **Log in to your Dolibarr instance.**
+3.  **Go to `Home > Setup > Modules/Applications > Webhook`.**
+4.  **Click on the `New Webhook` button.**
+5.  **Enter the following information:**
+    *   **Label:** `Image Sync`
+    *   **URL:** `https://your-domain.com/webhooks/image_sync.php`
+    *   **HTTP Method:** `GET`
+    *   **Triggering Event:** `Product_created` and `Product_modified`
+    *   activat
+6.  **Click on the `Create` button.**
+   The image synchronization is partially complete. The images are being mirrored to the CDN, but the database is not yet being updated with the CDN URLs.
 **Dolibarr API Bug:**
 
 It's important to note that there is a known bug in the Dolibarr API v18.4 that prevents the `documents` endpoint from returning product images. This middleware implements a workaround for this bug by using the `includerelations=photos` parameter to get the image data. However, this workaround may not work in all versions of Dolibarr.
@@ -121,7 +166,13 @@ It's important to note that there is a known bug in the Dolibarr API v18.4 that 
 -   **Fix Database Schema**: Add the missing `parent_id` and `slug` columns to the `categories` table.
 -   **Fix `dolibarrApiService.js`**: Correct the inconsistent module exports.
 -   **Fix `syncService.js`**: Add the missing `addCategory` import.
+### Known Issues and Areas for Improvement
 
+-   Inconsistent error handling
+-   Lack of input validation in controllers
+-   No logging in some services
+-   Potential for SQL injection in the `listProducts` function
+    
 ## Getting Started
 
 Follow these instructions to set up and run the project in your local development environment.
