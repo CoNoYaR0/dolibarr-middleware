@@ -48,7 +48,7 @@ const config = {
     webhookSecret: process.env.DOLIBARR_WEBHOOK_SECRET, // Added for webhook validation
   },
   cdn: {
-    baseUrl: process.env.CDN_BASE_URL || 'https://cdn.stainedglass.tn/image-cache/', // Example
+    baseUrl: process.env.CDN_BASE_URL || 'https://cdn.stainedglass.tn/stainedglass-img-cache/', // Example
   },
   // aws: { // AWS configuration removed as per new strategy
   //   accessKeyId: process.env.AWS_ACCESS_KEY_ID,

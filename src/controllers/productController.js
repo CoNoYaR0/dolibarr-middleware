@@ -7,7 +7,7 @@ import db from '../services/dbService.js';
  * TODO: Add more filters (price range, attributes), sorting options.
  */
 async function listProducts(request, reply) {
-  const { limit = 10, page = 1, category_id, sort_by = 'name', sort_order = 'asc' } = request.query;
+  const { limit = 10, page = 1, category_id, sort_by = 'name', sort_order = 'asc', min_price, max_price } = request.query;
   const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
   // Basic validation for sort_order
@@ -39,6 +39,16 @@ async function listProducts(request, reply) {
     joins += ` INNER JOIN product_categories_map pcm ON p.id = pcm.product_id`;
     conditions.push(`pcm.category_id = $${paramIndex++}`);
     queryParams.push(parseInt(category_id, 10));
+  }
+
+  if (min_price) {
+    conditions.push(`p.price >= $${paramIndex++}`);
+    queryParams.push(parseFloat(min_price));
+  }
+
+  if (max_price) {
+    conditions.push(`p.price <= $${paramIndex++}`);
+    queryParams.push(parseFloat(max_price));
   }
 
   // Add more conditions for other filters here (e.g., is_active = true)
@@ -135,7 +145,7 @@ async function getProductBySlug(request, reply) {
 
     // 5. Fetch associated categories
     const categoriesQuery = `
-      SELECT c.id, c.dolibarr_category_id, c.name, c.description /* add other category fields as needed, e.g., slug */
+      SELECT c.id, c.dolibarr_category_id, c.name, c.description, c.slug
       FROM product_categories_map pcm
       JOIN categories c ON pcm.category_id = c.id
       WHERE pcm.product_id = $1
@@ -153,9 +163,9 @@ async function getProductBySlug(request, reply) {
         stock: stockLevels.filter(s => s.variant_id === v.id) // Attach variant-specific stock
       })),
       // Base product images (not tied to a specific variant)
-      base_images: images.filter(img => img.product_id === product.id && img.variant_id === null),
+      images: images.filter(img => img.product_id === product.id && img.variant_id === null),
       // Base product stock (if stock can be for base product without variants, or as an aggregate)
-      base_stock: stockLevels.filter(s => s.product_id === product.id && s.variant_id === null),
+      stock: stockLevels.filter(s => s.product_id === product.id && s.variant_id === null),
     };
     // A more sophisticated approach for stock might pre-aggregate it or provide a clearer structure.
     // For example, a total stock for the product, and then stock per variant.

@@ -226,8 +226,10 @@ async function syncProductVariants() {
   logger.info('Product variant synchronization finished.');
 }
 
+import imageService from './imageService.js';
+
 async function syncProductImageMetadata() {
-  logger.info('Starting product image metadata synchronization (OVH CDN strategy)...');
+  logger.info('Starting product image metadata synchronization...');
   const productsResult = await db.query('SELECT id, dolibarr_product_id FROM products WHERE dolibarr_product_id IS NOT NULL;');
   if (productsResult.rows.length === 0) {
     logger.info('No products found to sync image metadata for.');
@@ -266,10 +268,20 @@ async function syncProductImageMetadata() {
         }
 
         try {
+          const imageUrl = dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url || dolibarrImageInfo.path || dolibarrImageInfo.filepath;
+          if (!imageUrl) {
+            logger.warn({ dolibarrImageInfo, productId: product.dolibarr_product_id }, `Skipping image due to missing image URL`);
+            continue;
+          }
+
+          const { buffer } = await dolibarrApi.getFileFromUrl(imageUrl);
+          const cdnUrl = await imageService.uploadImageToCdn(buffer, filenameFromDolibarr);
+
           const imageDataForDb = transformProductImage(
             dolibarrImageInfo, product.id, null,
             filenameFromDolibarr
           );
+          imageDataForDb.cdn_url = cdnUrl;
 
           const imageQueryText = `
             INSERT INTO product_images (
@@ -277,21 +289,16 @@ async function syncProductImageMetadata() {
               dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path,
               s3_bucket, s3_key
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
-            ON CONFLICT (product_id, dolibarr_image_id)
+            ON CONFLICT (product_id, original_dolibarr_filename)
             DO UPDATE SET
               cdn_url = EXCLUDED.cdn_url,
               alt_text = EXCLUDED.alt_text,
               display_order = EXCLUDED.display_order,
               is_thumbnail = EXCLUDED.is_thumbnail,
-              original_dolibarr_filename = EXCLUDED.original_dolibarr_filename,
               original_dolibarr_path = EXCLUDED.original_dolibarr_path,
               updated_at = NOW()
             RETURNING id;
           `;
-
-          if (!imageDataForDb.dolibarr_image_id) {
-            logger.warn({imageDataForDb, productId: product.dolibarr_product_id}, "Attempting to insert image metadata without a dolibarr_image_id. Conflict resolution might not work as expected.");
-          }
 
           await db.query(imageQueryText, [
             imageDataForDb.product_id, imageDataForDb.variant_id, imageDataForDb.cdn_url,
