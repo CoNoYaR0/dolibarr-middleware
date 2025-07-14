@@ -4,38 +4,100 @@ This project is a middleware application designed to synchronize data from a Dol
 
 The middleware is built with Node.js, Fastify, and PostgreSQL, and it is fully containerized with Docker for easy setup and deployment.
 
-## Key Features
+## Project Architecture
 
-- **Data Synchronization**: Synchronizes products, categories, product variants, images, and stock levels from Dolibarr.
-- **RESTful API**: Exposes the synchronized data through a well-defined API with support for pagination and basic filtering.
-- **Webhook Integration**: Listens to Dolibarr webhooks for real-time updates of products, categories, and stock movements.
-- **Extensible Architecture**: The modular design allows for easy extension to support additional Dolibarr modules.
-- **Containerized**: Uses Docker and Docker Compose for a consistent and isolated development environment.
+The application follows a modular architecture, separating concerns into different components:
+
+-   **`src/config`**: Handles application configuration, loading environment variables for the server, database, and Dolibarr API.
+-   **`src/services`**: Contains the core business logic, including:
+    -   `dbService.js`: Manages the connection to the PostgreSQL database.
+    -   `dolibarrApiService.js`: Interacts with the Dolibarr API to fetch data.
+    -   `pollingService.js`: Sets up cron jobs to periodically synchronize data.
+    -   `syncService.js`: Orchestrates the data synchronization process, transforming and saving data from Dolibarr to the local database.
+-   **`src/controllers`**: Handles the logic for API requests, processing input and preparing responses. It acts as an intermediary between the routes and the services.
+-   **`src/routes`**: Defines the API endpoints and webhook handlers, mapping them to the appropriate controllers.
+-   **`migrations`**: Contains the SQL scripts for creating and updating the database schema.
+
+## File-by-File Audit
+
+Here is a detailed audit of each file in the repository:
+
+### Root Directory
+
+-   `.env.example`: ✅ **Fully Implemented**. Example environment file.
+-   `.eslintignore`: ✅ **Fully Implemented**. ESLint ignore file.
+-   `.eslintrc.json`: ✅ **Fully Implemented**. ESLint configuration.
+-   `.gitignore`: ✅ **Fully Implemented**. Git ignore file.
+-   `.prettierrc.json`: ✅ **Fully Implemented**. Prettier configuration.
+-   `Dockerfile`: ✅ **Fully Implemented**. Dockerfile for the application.
+-   `docker-compose.yml`: ✅ **Fully Implemented**. Docker Compose file for managing the application and database services.
+-   `package.json`: ✅ **Fully Implemented**. Project metadata and dependencies.
+-   `package-lock.json`: ✅ **Fully Implemented**. Exact versions of dependencies.
+-   `vitest.config.js`: ✅ **Fully Implemented**. Vitest configuration.
+
+### `src/config`
+
+-   `index.js`: ✅ **Fully Implemented**. Centralized configuration loader.
+
+### `src/controllers`
+
+-   `categoryController.js`: 🚧 **Partially Implemented**.
+    -   `getAllCategories`: Lacks filtering, sorting, and pagination.
+-   `productController.js`: 🚧 **Partially Implemented**.
+    -   `listProducts`: Lacks advanced filtering and sorting.
+    -   `getProductBySlug`: Response structure could be improved.
+
+### `src/routes`
+
+-   `apiRoutes.js`: 🚧 **Partially Implemented**.
+    -   Missing routes for search and advanced filtering.
+-   `webhookRoutes.js`: ✅ **Fully Implemented**.
+
+### `src/services`
+
+-   `dbService.js`: ✅ **Fully Implemented**.
+-   `dolibarrApiService.js`: ❌ **Incomplete**.
+    -   Inconsistent module exports.
+-   `pollingService.js`: ✅ **Fully Implemented**.
+-   `syncService.js`: ❌ **Incomplete**.
+    -   Missing `addCategory` import.
+
+### `src/utils`
+
+-   `logger.js`: ✅ **Fully Implemented**.
+
+### `migrations`
+
+-   `001_initial_schema.sql`: ❌ **Incomplete**.
+    -   Missing `parent_id` and `slug` columns in `categories` table.
+-   `002_update_product_images_for_ovh_cdn.sql`: ✅ **Fully Implemented**.
+-   `003_product_many_to_many_categories.sql`: ✅ **Fully Implemented**.
 
 ## Project Status
 
-This project is under active development. The core functionalities are in place, but some features are still being improved or are yet to be implemented.
-
 ### Implemented Features
 
-- **Initial Data Sync**: A script is available to perform a full initial synchronization of data from Dolibarr.
-- **Product and Category Sync**: Synchronization of products and categories, including their relationships.
-- **Product Variant and Image Sync**: Synchronization of product variants and their associated images.
-- **Stock Level Sync**: Synchronization of stock levels for products.
-- **Webhook Handling**: Real-time updates for products, categories, and stock movements via Dolibarr webhooks.
-- **API Endpoints**:
-  - `GET /api/v1/products`: Lists products with pagination and filtering by category.
-  - `GET /api/v1/products/:slug`: Retrieves a single product with its variants, images, and stock levels.
-  - `GET /api/v1/categories`: Lists all categories.
+-   **Initial Data Sync**: A script is available to perform a full initial synchronization of data from Dolibarr.
+-   **Product and Category Sync**: Synchronization of products and categories, including their relationships.
+-   **Product Variant and Image Sync**: Synchronization of product variants and their associated images.
+-   **Stock Level Sync**: Synchronization of stock levels for products.
+-   **Webhook Handling**: Real-time updates for products, categories, and stock movements via Dolibarr webhooks.
+-   **API Endpoints**:
+    -   `GET /api/v1/products`: Lists products with pagination and filtering by category.
+    -   `GET /api/v1/products/:slug`: Retrieves a single product with its variants, images, and stock levels.
+    -   `GET /api/v1/categories`: Lists all categories.
 
 ### Ongoing Tasks and Future Enhancements
 
-- **Advanced API Filtering**: Enhance the `listProducts` endpoint with more advanced filtering options (e.g., by price, attributes, tags).
-- **API Sorting Options**: Add more sorting options to the `listProducts` endpoint.
-- **Improved Error Handling**: Implement more specific and informative error handling throughout the application.
-- **Comprehensive Testing**: Develop a full test suite with unit and integration tests to ensure code quality and reliability.
-- **Search Functionality**: Add a dedicated search endpoint for products.
-- **User Authentication and Authorization**: Implement a robust authentication and authorization mechanism for the API.
+-   **Advanced API Filtering**: Enhance the `listProducts` endpoint with more advanced filtering options (e.g., by price, attributes, tags).
+-   **API Sorting Options**: Add more sorting options to the `listProducts` endpoint.
+-   **Improved Error Handling**: Implement more specific and informative error handling throughout the application.
+-   **Comprehensive Testing**: Develop a full test suite with unit and integration tests to ensure code quality and reliability.
+-   **Search Functionality**: Add a dedicated search endpoint for products.
+-   **User Authentication and Authorization**: Implement a robust authentication and authorization mechanism for the API.
+-   **Fix Database Schema**: Add the missing `parent_id` and `slug` columns to the `categories` table.
+-   **Fix `dolibarrApiService.js`**: Correct the inconsistent module exports.
+-   **Fix `syncService.js`**: Add the missing `addCategory` import.
 
 ## Getting Started
 
@@ -43,8 +105,8 @@ Follow these instructions to set up and run the project in your local developmen
 
 ### Prerequisites
 
-- [Docker](https://www.docker.com/get-started)
-- [Node.js](https://nodejs.org/) (for running scripts outside of Docker)
+-   [Docker](https://www.docker.com/get-started)
+-   [Node.js](https://nodejs.org/) (for running scripts outside of Docker)
 
 ### Installation and Configuration
 
@@ -63,26 +125,7 @@ Follow these instructions to set up and run the project in your local developmen
     cp .env.example .env
     ```
 
-    Update the `.env` file with your Dolibarr and PostgreSQL credentials:
-
-    ```env
-    # Application Configuration
-    NODE_ENV=development
-    PORT=3000
-    LOG_LEVEL=debug
-
-    # Database Configuration
-    DB_USER=myuser
-    DB_PASSWORD=mypassword
-    DB_NAME=myapp_dev
-    DB_HOST=db
-    DB_PORT=5432
-
-    # Dolibarr API Configuration
-    DOLIBARR_API_URL=https://your-dolibarr-instance.com/api/index.php
-    DOLIBARR_API_KEY=your_dolibarr_api_key
-    DOLIBARR_WEBHOOK_SECRET=your_webhook_secret
-    ```
+    Update the `.env` file with your Dolibarr and PostgreSQL credentials.
 
 3.  **Build and run the application with Docker Compose:**
 
@@ -90,7 +133,7 @@ Follow these instructions to set up and run the project in your local developmen
     docker-compose up --build
     ```
 
-    This command will build the Docker image for the application and start the `app` and `db` services. The application will be available at `http://localhost:3000`.
+    The application will be available at `http://localhost:3000`.
 
 ### Initial Data Synchronization
 
@@ -102,8 +145,6 @@ To run the initial sync, execute the following command in a separate terminal:
 docker-compose exec app npm run sync:initial
 ```
 
-This script will fetch all products, categories, variants, images, and stock levels from Dolibarr and save them to the PostgreSQL database.
-
 ### API Documentation
 
 The API documentation is automatically generated using Swagger and is available at:
@@ -111,7 +152,3 @@ The API documentation is automatically generated using Swagger and is available 
 [http://localhost:3000/documentation](http://localhost:3000/documentation)
 
 This interactive documentation allows you to explore the API endpoints and test them directly from your browser.
-
-## License
-
-This project is licensed under the ISC License. See the [LICENSE](LICENSE) file for more details.
