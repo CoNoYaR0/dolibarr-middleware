@@ -240,6 +240,7 @@ async function syncProductImageMetadata() {
     logger.info(`Fetching image metadata for Dolibarr product ID: ${product.dolibarr_product_id} (Local ID: ${product.id})`);
     try {
       const dolibarrProductData = await dolibarrApi.getProductById(product.dolibarr_product_id);
+      logger.info({ dolibarrProductData }, 'Dolibarr product data:');
       const imagesToProcess = dolibarrProductData.photos || dolibarrProductData.images || [];
 
       if (!imagesToProcess || imagesToProcess.length === 0) {
@@ -249,6 +250,7 @@ async function syncProductImageMetadata() {
       logger.info(`Found ${imagesToProcess.length} potential image entries for product ID: ${product.dolibarr_product_id}`);
 
       for (const dolibarrImageInfo of imagesToProcess) {
+        logger.info({ dolibarrImageInfo }, 'Processing image...');
         let filenameFromDolibarr = dolibarrImageInfo.filename;
         if (!filenameFromDolibarr) {
             const imageUrl = dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url || dolibarrImageInfo.path || dolibarrImageInfo.filepath;
@@ -274,7 +276,10 @@ async function syncProductImageMetadata() {
             continue;
           }
 
-          const { buffer } = await dolibarrApi.getFileFromUrl(imageUrl);
+          logger.info({ dolibarrImageInfo }, 'Downloading image...');
+          const { buffer } = await dolibarrApi.getDocument('produit', dolibarrImageInfo.filename);
+          logger.info({ dolibarrImageInfo }, 'Image downloaded.');
+
           const cdnUrl = await imageService.uploadImageToCdn(buffer, filenameFromDolibarr);
 
           const imageDataForDb = transformProductImage(

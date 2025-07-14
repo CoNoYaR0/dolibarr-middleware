@@ -19,14 +19,14 @@ const TIMEOUT = config.dolibarr.timeout;
  * @returns {Promise<any>} The JSON response from the API.
  * @throws {Error} If the request fails or returns a non-ok status.
  */
-async function request(endpoint, options = {}, params = {}) {
+async function request(endpoint, options = {}, params = {}, isDocument = false) {
   const url = new URL(`${BASE_URL}${endpoint}`);
 
   // Add query parameters
   Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
 
   const defaultHeaders = {
-    'Accept': 'application/json',
+    'Accept': isDocument ? 'application/octet-stream' : 'application/json',
     'DOLAPIKEY': API_KEY,
     ...options.headers,
   };
@@ -62,6 +62,12 @@ async function request(endpoint, options = {}, params = {}) {
     // Handle cases where response might be empty for certain successful requests (e.g., 204 No Content)
     if (response.status === 204) {
       return null;
+    }
+
+    if (isDocument) {
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return { buffer, contentType };
     }
 
     return response.json();
@@ -101,7 +107,7 @@ async function getProducts(queryParams = {}) {
  * @returns {Promise<object>} The product details.
  */
 async function getProductById(productId) {
-  return request(`/products/${productId}`);
+  return request(`/products/${productId}`, {}, { includerelations: 'photos' });
 }
 
 /**
@@ -203,7 +209,12 @@ export default {
 
   getProductStock,
   getProductCategories,
+  getDocument,
 };
+
+async function getDocument(module_part, original_file) {
+  return request('/documents/download', {}, { module_part, original_file }, true);
+}
 
 /**
  * Fetches stock information for a given product.
