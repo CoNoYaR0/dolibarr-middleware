@@ -21,40 +21,42 @@
     -   Client service for making requests to the Dolibarr REST API. Adjusted for Dolibarr v18.0.4 specifics (e.g., category sorting, stock endpoint `/products/{id}/stock`, fetching product categories via `/categories/object/product/{id}`).
     -   Handles API key authentication and request timeouts.
 -   **Webhook Handling (`webhookRoutes.js`):**
-    -   Endpoint `POST /webhooks/webhook` to receive and process webhooks from Dolibarr.
-    -   Security is currently disabled for testing purposes, as Dolibarr v18 does not support sending custom headers for webhooks. A warning is logged if a webhook is received without the `x-dolibarr-webhook-secret` header.
-    -   Supported events:
-        -   `PRODUCT_CREATE`: Creates product, links categories, syncs variants and stock.
-        -   `PRODUCT_MODIFY`: Updates product, re-links categories, re-syncs variants and stock.
-        -   `PRODUCT_DELETE`: Deletes product and associated data (variants, stock, category links, images).
-        -   `CATEGORY_CREATE`: Creates category, resolving parent-child relationships.
-        -   `CATEGORY_MODIFY`: Updates category, including parent-child relationships.
-        -   `CATEGORY_DELETE`: Deletes category (links from products are removed; child categories become top-level if `parent_id` FK schema update is applied).
-        -   `STOCK_MOVEMENT`: Triggers a full stock re-sync for the affected product from Dolibarr.
-    -   Asynchronous processing of webhooks to ensure quick response to Dolibarr.
+    -   Endpoint `POST /webhooks/webhook/:secret` to receive and process webhooks from Dolibarr.
+    -   Security is enforced by validating the `:secret` parameter in the URL against the `DOLIBARR_WEBHOOK_SECRET` environment variable. This method is used to accommodate Dolibarr v18's lack of support for custom headers in webhooks.
+    -   Supported events: `PRODUCT_CREATE`, `PRODUCT_MODIFY`, `PRODUCT_DELETE`, `CATEGORY_CREATE`, `CATEGORY_MODIFY`, `CATEGORY_DELETE`, `STOCK_MOVEMENT`.
+    -   Asynchronous processing of webhooks to ensure a quick response to Dolibarr.
 -   **Polling Service (`pollingService.js`):**
-    -   Cron-based polling for periodic data synchronization (can complement webhooks or act as a fallback).
+    -   Cron-based polling for periodic data synchronization, which can complement webhooks or act as a fallback.
 -   **RESTful API (`apiRoutes.js`, Controllers):**
     -   `GET /api/v1/categories`: List all categories.
-    -   `GET /api/v1/products`: List products with pagination, sorting, and filtering by a single `category_id` (leveraging the many-to-many relationship).
-    -   `GET /api/v1/products/:slug`: Get a single product, including its variants, image URLs, stock levels, and an array of all its associated categories.
+    -   `GET /api/v1/products`: List products with pagination, sorting, and filtering by `category_id`.
+    -   `GET /api/v1/products/:slug`: Get a single product with its variants, images, stock levels, and associated categories.
 -   **API Documentation (`server.js`, Swagger):**
-    -   Automatic OpenAPI (Swagger) specification generation via `@fastify/swagger` and UI via `@fastify/swagger-ui`.
+    -   Automatic OpenAPI (Swagger) specification generation and UI.
 -   **Database (`dbService.js`, `migrations/`):**
-    -   PostgreSQL schema including `products`, `categories`, `product_variants`, `product_images`, `stock_levels`, and a `product_categories_map` junction table for many-to-many product-category links.
-    -   Migrations for initial schema, OVH CDN image updates, and product-category many-to-many setup.
+    -   PostgreSQL schema with a `product_categories_map` junction table for many-to-many relationships.
+    -   Database migrations for schema setup and updates.
 -   **Configuration (`config/index.js`, `.env`):**
-    -   Centralized configuration using environment variables.
+    -   Centralized, environment-aware configuration.
 -   **Logging & Error Handling (`logger.js`, `server.js`):**
-    -   Structured logging (Pino), centralized error handling.
--   **Deployment (`Dockerfile`, `render.yaml`):**
-    -   `Dockerfile` for containerization and `render.yaml` for deployment to Render.
+    -   Structured logging (Pino) and centralized error handling.
+-   **Testing (`vitest`):**
+    -   Unit and integration tests are set up with `vitest`. Tests for key components like webhook security are implemented.
+-   **Deployment (`Dockerfile`):**
+    -   Containerized for deployment on services like Render.
 
-## 3. Known Issues and Recommendations
+## 3. Next Steps & Recommendations
 
--   **Webhook Security:** Webhook security is enforced by including a secret in the URL. For this to work, you must set the `DOLIBARR_WEBHOOK_SECRET` environment variable. The webhook URL in Dolibarr should then be configured as `https://<your-app-url>/webhooks/webhook/<your-secret-here>`.
--   **Payload Parsing:** The application's payload parsing for Dolibarr webhooks should be monitored to ensure it robustly handles all expected data formats and edge cases.
--   **Logger:** The logger implementation should be reviewed to ensure consistent and comprehensive logging across all services and functions.
+Based on the current state of the project, the following tasks are recommended:
+
+1.  **Enhance Test Coverage:** While a testing framework is in place, coverage should be expanded. Key areas for new tests include:
+    -   **`syncService.js`:** Unit tests for each data transformation function to ensure Dolibarr data is correctly mapped to the database schema.
+    -   **`apiRoutes.js`:** Integration tests for the public API endpoints (`/api/v1/products`, `/api/v1/categories`, etc.) to validate responses, pagination, and filtering.
+    -   **Error Handling:** Tests to confirm that the application responds gracefully to common errors, such as invalid payloads or failed API calls to Dolibarr.
+
+2.  **Refine Logging:** The existing logging is good, but it could be more consistent. A full review should be conducted to ensure that all critical operations, errors, and decisions are logged with a consistent format and level of detail.
+
+3.  **Schema and Migration Review:** Review the database schema and migrations for any potential improvements or optimizations. For example, ensure all foreign key relationships have appropriate indexes for performance.
 
 ## 4. Setup and Installation
 
