@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS categories (
     dolibarr_category_id INTEGER UNIQUE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
+    parent_id INTEGER,
     parent_dolibarr_category_id INTEGER, -- Cannot be a direct FK yet if parent might not exist
+    slug VARCHAR(255) UNIQUE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     dolibarr_created_at TIMESTAMPTZ,
