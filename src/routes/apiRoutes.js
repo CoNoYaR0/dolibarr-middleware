@@ -53,8 +53,15 @@ async function apiRoutes(fastify, options) {
       summary: 'List all categories',
       description: 'Retrieves a list of all synchronized categories from the local database.',
       tags: ['Categories'],
-      // TODO: Define a response schema for categories if not already implicitly handled by controller
-      // response: { 200: { type: 'array', items: { type: 'object', properties: { id: {type: 'integer'}, name: {type: 'string'}, ... } } } }
+      querystring: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', minimum: 1, default: 10 },
+          page: { type: 'integer', minimum: 1, default: 1 },
+          sort_by: { type: 'string', enum: ['name', 'created_at', 'updated_at'], default: 'name' },
+          sort_order: { type: 'string', enum: ['asc', 'desc'], default: 'asc' },
+        },
+      },
     }
   }, categoryController.getAllCategories);
   // fastify.get('/categories/:idOrSlug', categoryController.getCategory); // Example for single category
