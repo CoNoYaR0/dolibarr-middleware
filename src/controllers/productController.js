@@ -426,6 +426,7 @@ export default {
   linkProductToCategories,
   updateStockLevel,
   syncProductVariants, // Added this function
+  updateStockLevel,
 };
 
 /**

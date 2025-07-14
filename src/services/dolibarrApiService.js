@@ -199,7 +199,10 @@ export default {
       logger.error({ err: error, url: fileUrl }, `Error fetching file from URL`);
       throw error;
     }
-  }
+  },
+
+  getProductStock,
+  getProductCategories,
 };
 
 /**
