@@ -11,6 +11,7 @@ import logger from '../utils/logger.js';
  * @throws {Error} If the upload fails.
  */
 async function uploadImageToCdn(imageBuffer, filename) {
+  logger.info({ filename }, 'Uploading image to CDN...');
   const form = new FormData();
   form.append('image', imageBuffer, { filename });
 
@@ -34,9 +35,11 @@ async function uploadImageToCdn(imageBuffer, filename) {
 
   const result = await response.json();
   if (!result.url) {
+    logger.error({ result }, 'CDN response did not include a URL.');
     throw new Error('CDN response did not include a URL.');
   }
 
+  logger.info({ filename, url: result.url }, 'Image uploaded to CDN successfully.');
   return result.url;
 }
 
