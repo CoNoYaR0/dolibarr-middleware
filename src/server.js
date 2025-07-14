@@ -4,6 +4,7 @@ import config from './config/index.js'; // Import the centralized config
 import dbService from './services/dbService.js'; // Will be used later
 import webhookRoutes from './routes/webhookRoutes.js';
 import pollingService from './services/pollingService.js';
+import syncService from './services/syncService.js';
 import apiRoutes from './routes/apiRoutes.js';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
