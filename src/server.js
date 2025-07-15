@@ -69,12 +69,6 @@ fastify.get('/health', { schema: healthCheckSchema }, async (request, reply) => 
   };
 });
 
-// Register webhook routes
-fastify.register(webhookRoutes, { prefix: '/webhooks' });
-
-// Register main API routes (for frontend consumption)
-fastify.register(apiRoutes, { prefix: '/api/v1' }); // Example prefix
-
 // Swagger/OpenAPI Documentation Setup
 // Ensure this is registered before your routes if you want them to be included
 await fastify.register(fastifySwagger, {
@@ -116,6 +110,12 @@ await fastify.register(fastifySwaggerUi, {
   // transformSpecification: (swaggerObject, request, reply) => { return swaggerObject },
   // transformSpecificationClone: true
 });
+
+// Register webhook routes
+fastify.register(webhookRoutes, { prefix: '/webhooks' });
+
+// Register main API routes (for frontend consumption)
+fastify.register(apiRoutes, { prefix: '/api/v1' }); // Example prefix
 
 
 // Centralized Error Handler
