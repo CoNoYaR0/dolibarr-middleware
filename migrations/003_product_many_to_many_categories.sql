@@ -10,14 +10,8 @@ CREATE TABLE product_categories_map (
 );
 
 -- Create a trigger to automatically update updated_at timestamp
-CREATE OR REPLACE FUNCTION trigger_set_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
+-- The trigger_set_timestamp function is already defined in 001_initial_schema.sql
+-- Reusing the existing function for the new table.
 CREATE TRIGGER set_product_categories_map_updated_at
 BEFORE UPDATE ON product_categories_map
 FOR EACH ROW

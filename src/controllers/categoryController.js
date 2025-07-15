@@ -16,7 +16,7 @@ async function getAllCategories(request, reply) {
 
   // Basic validation for sort_by - whitelist columns
   const validSortColumns = ['name', 'created_at', 'updated_at']; // Add more as needed
-  const sortByColumn = validSortColumns.includes(sort_by.toLowerCase()) ? sort_by.toLowerCase() : 'name';
+  const sortByColumn = validSortColumns.includes(sort_by.toLowerCase()) ? `"${sort_by.toLowerCase()}"` : 'name';
 
   try {
     const queryText = `

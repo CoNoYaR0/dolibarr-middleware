@@ -16,7 +16,7 @@ async function listProducts(request, reply) {
 
   // Basic validation for sort_by - whitelist columns
   const validSortColumns = ['name', 'price', 'created_at', 'updated_at']; // Add more as needed
-  const sortByColumn = validSortColumns.includes(sort_by.toLowerCase()) ? sort_by.toLowerCase() : 'name';
+  const sortByColumn = validSortColumns.includes(sort_by.toLowerCase()) ? `"${sort_by.toLowerCase()}"` : 'name';
 
 
   let queryBase = `
@@ -156,19 +156,11 @@ async function getProductBySlug(request, reply) {
     // Structure the response
     const response = {
       ...product,
-      categories: productCategories, // Add categories to the response
-      variants: variants.map(v => ({
-        ...v,
-        images: images.filter(img => img.variant_id === v.id), // Attach variant-specific images
-        stock: stockLevels.filter(s => s.variant_id === v.id) // Attach variant-specific stock
-      })),
-      // Base product images (not tied to a specific variant)
-      images: images.filter(img => img.product_id === product.id && img.variant_id === null),
-      // Base product stock (if stock can be for base product without variants, or as an aggregate)
-      stock: stockLevels.filter(s => s.product_id === product.id && s.variant_id === null),
+      categories: productCategories,
+      variants,
+      images,
+      stockLevels,
     };
-    // A more sophisticated approach for stock might pre-aggregate it or provide a clearer structure.
-    // For example, a total stock for the product, and then stock per variant.
 
     reply.send(response);
 
@@ -198,6 +190,19 @@ async function getProductByDolibarrId(dolibarrProductId, logger) {
     throw error;
   }
 }
+
+export default {
+  listProducts,
+  getProductBySlug,
+  getProductByDolibarrId,
+  addProduct,
+  updateProductByDolibarrId,
+  deleteProductByDolibarrId,
+  clearProductCategoryLinks,
+  linkProductToCategories,
+  updateStockLevel,
+  syncProductVariants,
+};
 
 /**
  * Synchronizes product variants for a given local product ID.
@@ -425,28 +430,6 @@ async function linkProductToCategories(internalProductId, arrayOfDolibarrCategor
 }
 
 
-export default {
-  listProducts,
-  getProductBySlug,
-  getProductByDolibarrId,
-  addProduct,
-  updateProductByDolibarrId,
-  deleteProductByDolibarrId,
-  clearProductCategoryLinks,
-  linkProductToCategories,
-  updateStockLevel,
-  syncProductVariants, // Added this function
-  updateStockLevel,
-};
-
-/**
- * Updates or inserts a stock level entry for a product/variant in a specific warehouse.
- * @param {number} internalProductId - The local ID of the product.
- * @param {number|null} internalVariantId - The local ID of the variant (null if stock is for base product).
- * @param {string|number} dolibarrWarehouseId - The Dolibarr warehouse ID.
- * @param {number} quantity - The stock quantity.
- * @param {object} logger - Optional logger instance.
- */
 async function updateStockLevel(internalProductId, internalVariantId, dolibarrWarehouseId, quantity, logger) {
   try {
     // Stock levels table uses product_id (nullable), variant_id (nullable), and warehouse_id (varchar)
