@@ -46,8 +46,7 @@ Here is a detailed audit of each file in the repository:
 
 ### `src/routes`
 
--   `apiRoutes.js`: 🚧 **Partially Implemented**.
-    -   Missing routes for search and advanced filtering.
+-   `apiRoutes.js`: ✅ **Fully Implemented**.
 -   `webhookRoutes.js`: ✅ **Fully Implemented**.
 
 ### `src/services`
@@ -121,7 +120,7 @@ A webhook in Dolibarr should be configured to trigger the `image_sync.php` scrip
     *   activat
 6.  **Click on the `Create` button.**
   
-     **The image synchronization is partially complete. The images are being mirrored to the CDN, but the database is not yet being updated with the CDN URLs.**
+     **The image synchronization is now fully complete.**
 **Dolibarr API Bug:**
 
 It's important to note that there is a known bug in the Dolibarr API v18.4 that prevents the `documents` endpoint from returning product images. This middleware implements a workaround for this bug by using the `includerelations=photos` parameter to get the image data. However, this workaround may not work in all versions of Dolibarr.
