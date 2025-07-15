@@ -41,11 +41,8 @@ Here is a detailed audit of each file in the repository:
 
 ### `src/controllers`
 
--   `categoryController.js`: 🚧 **Partially Implemented**.
-    -   `getAllCategories`: Lacks filtering, sorting, and pagination.
--   `productController.js`: 🚧 **Partially Implemented**.
-    -   `listProducts`: Lacks advanced filtering and sorting.
-    -   `getProductBySlug`: Response structure could be improved.
+-   `categoryController.js`: ✅ **Fully Implemented**.
+-   `productController.js`: ✅ **Fully Implemented**.
 
 ### `src/routes`
 
@@ -137,8 +134,7 @@ It's important to note that there is a known bug in the Dolibarr API v18.4 that 
 
 ### `migrations`
 
--   `001_initial_schema.sql`: ❌ **Incomplete**.
-    -   Missing `parent_id` and `slug` columns in `categories` table.
+-   `001_initial_schema.sql`: ✅ **Fully Implemented**.
 -   `002_update_product_images_for_ovh_cdn.sql`: ✅ **Fully Implemented**.
 -   `003_product_many_to_many_categories.sql`: ✅ **Fully Implemented**.
 
@@ -164,15 +160,15 @@ It's important to note that there is a known bug in the Dolibarr API v18.4 that 
 -   **Comprehensive Testing**: Develop a full test suite with unit and integration tests to ensure code quality and reliability.
 -   **Search Functionality**: Add a dedicated search endpoint for products.
 -   **User Authentication and Authorization**: Implement a robust authentication and authorization mechanism for the API.
--   **Fix Database Schema**: Add the missing `parent_id` and `slug` columns to the `categories` table.
--   **Fix `dolibarrApiService.js`**: Correct the inconsistent module exports.
--   **Fix `syncService.js`**: Add the missing `addCategory` import.
+-   **Fix Database Schema**: ✅ Add the missing `parent_id` and `slug` columns to the `categories` table.
+-   **Fix `dolibarrApiService.js`**: ✅ Correct the inconsistent module exports.
+-   **Fix `syncService.js`**: ✅ Add the missing `addCategory` import.
 ### Known Issues and Areas for Improvement
 
 -   Inconsistent error handling
 -   Lack of input validation in controllers
 -   No logging in some services
--   Potential for SQL injection in the `listProducts` function
+-   Potential for SQL injection in the `listProducts` function: ✅ Fixed
     
 ## Getting Started
 
