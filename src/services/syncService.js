@@ -239,6 +239,7 @@ async function syncProductImageMetadata() {
       const dolibarrProductData = await dolibarrApi.getProductById(product.dolibarr_product_id);
       logger.info({ dolibarrProductData }, 'Dolibarr product data:');
       const imagesToProcess = dolibarrProductData.photos || dolibarrProductData.images || [];
+      logger.info({ imagesToProcess }, 'Images to process:');
 
       if (!imagesToProcess || imagesToProcess.length === 0) {
         logger.info(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);

@@ -21,6 +21,7 @@ const TIMEOUT = config.dolibarr.timeout;
  */
 async function request(endpoint, options = {}, params = {}, isDocument = false) {
   const url = new URL(`${BASE_URL}${endpoint}`);
+  logger.info({ url }, 'Request URL:');
 
   // Add query parameters
   Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
