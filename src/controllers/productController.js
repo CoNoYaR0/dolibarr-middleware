@@ -191,9 +191,58 @@ async function getProductByDolibarrId(dolibarrProductId, logger) {
   }
 }
 
+async function searchProducts(request, reply) {
+  const { q, limit = 10, page = 1 } = request.query;
+  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
+  if (!q) {
+    return reply.code(400).send({ error: 'Query parameter "q" is required.' });
+  }
+
+  try {
+    const searchQuery = `
+      SELECT
+        p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.price, p.slug, p.is_active,
+        (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url
+      FROM products p
+      WHERE
+        p.name ILIKE $1 OR
+        p.description ILIKE $1 OR
+        p.sku ILIKE $1
+      LIMIT $2 OFFSET $3;
+    `;
+    const { rows: products } = await db.query(searchQuery, [`%${q}%`, limit, offset]);
+
+    const countQuery = `
+      SELECT COUNT(*) FROM products p
+      WHERE
+        p.name ILIKE $1 OR
+        p.description ILIKE $1 OR
+        p.sku ILIKE $1;
+    `;
+    const { rows: countResult } = await db.query(countQuery, [`%${q}%`]);
+    const totalProducts = parseInt(countResult[0].count, 10);
+    const totalPages = Math.ceil(totalProducts / parseInt(limit, 10));
+
+    reply.send({
+      data: products,
+      pagination: {
+        total_products: totalProducts,
+        total_pages: totalPages,
+        current_page: parseInt(page, 10),
+        per_page: parseInt(limit, 10),
+      },
+    });
+  } catch (error) {
+    request.log.error({ err: error, query: request.query, requestId: request.id }, 'Error searching products');
+    reply.code(500).send({ error: 'Failed to search products', message: error.message });
+  }
+}
+
 export default {
   listProducts,
   getProductBySlug,
+  searchProducts,
   getProductByDolibarrId,
   addProduct,
   updateProductByDolibarrId,

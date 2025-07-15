@@ -225,8 +225,6 @@ async function syncProductVariants() {
   logger.info('Product variant synchronization finished.');
 }
 
-import imageService from './imageService.js';
-
 async function syncProductImageMetadata() {
   logger.info('Starting product image metadata synchronization...');
   const productsResult = await db.query('SELECT id, dolibarr_product_id FROM products WHERE dolibarr_product_id IS NOT NULL;');
@@ -269,18 +267,7 @@ async function syncProductImageMetadata() {
         }
 
         try {
-          const imageUrl = dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url || dolibarrImageInfo.path || dolibarrImageInfo.filepath;
-          if (!imageUrl) {
-            logger.warn({ dolibarrImageInfo, productId: product.dolibarr_product_id }, `Skipping image due to missing image URL`);
-            continue;
-          }
-
-          logger.info({ dolibarrImageInfo }, 'Downloading image...');
-          const { buffer } = await dolibarrApi.getDocument('produit', dolibarrImageInfo.filename);
-          logger.info({ dolibarrImageInfo }, 'Image downloaded.');
-
-          const cdnUrl = await imageService.uploadImageToCdn(buffer, filenameFromDolibarr);
-
+          const cdnUrl = `${config.cdn.baseUrl}${filenameFromDolibarr}`;
           const imageDataForDb = transformProductImage(
             dolibarrImageInfo, product.id, null,
             filenameFromDolibarr
