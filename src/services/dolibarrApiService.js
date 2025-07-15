@@ -108,7 +108,10 @@ async function getProducts(queryParams = {}) {
  * @returns {Promise<object>} The product details.
  */
 async function getProductById(productId) {
-  return request(`/products/${productId}`, {}, { includerelations: 'photos' });
+  const product = await request(`/products/${productId}`);
+  const documents = await request('/documents', {}, { modulepart: 'product', id: productId });
+  product.photos = documents;
+  return product;
 }
 
 /**
