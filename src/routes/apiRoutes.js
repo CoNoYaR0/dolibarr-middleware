@@ -75,6 +75,22 @@ async function apiRoutes(fastify, options) {
 
   // TODO: Add routes for:
   // - Search products
+  fastify.get('/products/search', {
+    schema: {
+      summary: 'Search products',
+      description: 'Searches for products by name, description, or SKU.',
+      tags: ['Products'],
+      querystring: {
+        type: 'object',
+        properties: {
+          q: { type: 'string' },
+          limit: { type: 'integer', minimum: 1, default: 10 },
+          page: { type: 'integer', minimum: 1, default: 1 },
+        },
+        required: ['q'],
+      },
+    }
+  }, productController.searchProducts);
   // - Get products by tags/attributes (more advanced filtering)
 }
 
