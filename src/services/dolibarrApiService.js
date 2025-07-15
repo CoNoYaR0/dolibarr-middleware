@@ -160,58 +160,6 @@ async function getProductVariants(productId, queryParams = {}) {
 }
 
 
-export default {
-  getProducts,
-  getProductById,
-  getCategories,
-  getCategoryById,
-  getProductVariants,
-  getProductStock, // Added getProductStock
-  getProductCategories, // Added getProductCategories
-
-  /**
-   * Fetches a file (e.g., an image) from a given URL.
-   * This is a generic helper, could be used for images served by Dolibarr if they have direct URLs.
-   * @param {string} fileUrl - The direct URL to the file.
-   * @returns {Promise<{buffer: Buffer, contentType: string}>} The file content as a Buffer and its content type.
-   * @throws {Error} If the request fails or returns a non-ok status.
-   */
-  async getFileFromUrl(fileUrl) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT); // Use existing TIMEOUT
-
-    try {
-      const response = await fetch(fileUrl, {
-        signal: controller.signal,
-        // Add DOLAPIKEY header if the file URL is also protected by Dolibarr's API key
-        // headers: { 'DOLAPIKEY': API_KEY } // Uncomment and test if needed for image URLs
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file from URL ${fileUrl}: ${response.status} ${response.statusText}`);
-      }
-
-      const contentType = response.headers.get('content-type') || 'application/octet-stream';
-      const buffer = Buffer.from(await response.arrayBuffer());
-      return { buffer, contentType };
-
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        logger.error({ err: error, url: fileUrl }, `File download timed out`);
-        throw new Error(`File download from URL ${fileUrl} timed out after ${TIMEOUT}ms`);
-      }
-      logger.error({ err: error, url: fileUrl }, `Error fetching file from URL`);
-      throw error;
-    }
-  },
-
-  getProductStock,
-  getProductCategories,
-  getDocument,
-};
-
 async function getDocument(module_part, original_file) {
   return request('/documents/download', {}, { module_part, original_file }, true);
 }
@@ -247,3 +195,14 @@ async function getProductCategories(dolibarrProductId) {
   logger.info({ dolibarrProductId }, 'getProductCategories called for product ID:');
   return request(`/categories/object/product/${dolibarrProductId}`);
 }
+
+export default {
+  getProducts,
+  getProductById,
+  getCategories,
+  getCategoryById,
+  getProductVariants,
+  getProductStock,
+  getProductCategories,
+  getDocument,
+};

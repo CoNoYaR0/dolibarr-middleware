@@ -4,7 +4,6 @@ import config from '../config/index.js';
 import path from 'path';
 import logger from '../utils/logger.js';
 import categoryController from '../controllers/categoryController.js';
-const { addCategory } = categoryController;
 import productController from '../controllers/productController.js';
 import dolibarrApiService from './dolibarrApiService.js';
 
