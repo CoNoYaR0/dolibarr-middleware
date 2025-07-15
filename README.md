@@ -123,8 +123,7 @@ A webhook in Dolibarr should be configured to trigger the `image_sync.php` scrip
     *   **Triggering Event:** `Product_created` and `Product_modified`
     *   activat
 6.  **Click on the `Create` button.**
-
-###The image synchronization is partially complete. The images are being mirrored to the CDN, but the database is not yet being updated with the CDN URLs.
+    **The image synchronization is partially complete. The images are being mirrored to the CDN, but the database is not yet being updated with the CDN URLs.**
    
 **Dolibarr API Bug:**
 
