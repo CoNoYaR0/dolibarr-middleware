@@ -27,6 +27,7 @@ ALTER TABLE product_images
 -- For the ON CONFLICT target used in syncService.js: (product_id, dolibarr_image_id)
 -- For the ON CONFLICT target used in syncService.js: (product_id, original_dolibarr_filename)
 -- We need a unique constraint on these columns.
+ALTER TABLE product_images DROP CONSTRAINT IF EXISTS uq_product_images_product_original_filename;
 ALTER TABLE product_images ADD CONSTRAINT uq_product_images_product_original_filename UNIQUE (product_id, original_dolibarr_filename);
 
 COMMIT;
