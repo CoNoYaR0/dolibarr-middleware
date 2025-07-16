@@ -46,7 +46,7 @@ const getProductBySlugSchema = {
 };
 
 
-async function apiRoutes(fastify, options) {
+async function apiRoutes(fastify) {
   // Category Routes
   fastify.get('/categories', {
     schema: {

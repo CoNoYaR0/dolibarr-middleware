@@ -1,22 +1,33 @@
 import db from '../services/dbService.js';
+import Joi from 'joi';
 
 // const logger = console; // Will use request.log provided by Fastify
+
+const listProductsSchema = Joi.object({
+  limit: Joi.number().integer().min(1).default(10),
+  page: Joi.number().integer().min(1).default(1),
+  category_id: Joi.number().integer().min(1),
+  sort_by: Joi.string().valid('name', 'price', 'created_at', 'updated_at').default('name'),
+  sort_order: Joi.string().valid('asc', 'desc').default('asc'),
+  min_price: Joi.number().min(0),
+  max_price: Joi.number().min(0),
+});
 
 /**
  * List products with pagination, basic filtering by category_id.
  * TODO: Add more filters (price range, attributes), sorting options.
  */
 async function listProducts(request, reply) {
-  const { limit = 10, page = 1, category_id, sort_by = 'name', sort_order = 'asc', min_price, max_price } = request.query;
-  const offset = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+  const { error, value } = listProductsSchema.validate(request.query);
+  if (error) {
+    return reply.status(400).send({ error: 'Validation Error', details: error.details });
+  }
 
-  // Basic validation for sort_order
-  const validSortOrders = ['asc', 'desc'];
-  const order = validSortOrders.includes(sort_order.toLowerCase()) ? sort_order.toLowerCase() : 'asc';
+  const { limit, page, category_id, sort_by, sort_order, min_price, max_price } = value;
+  const offset = (page - 1) * limit;
 
-  // Basic validation for sort_by - whitelist columns
-  const validSortColumns = ['name', 'price', 'created_at', 'updated_at']; // Add more as needed
-  const sortByColumn = validSortColumns.includes(sort_by.toLowerCase()) ? `"${sort_by.toLowerCase()}"` : 'name';
+  const order = sort_order;
+  const sortByColumn = `"${sort_by}"`;
 
 
   let queryBase = `
@@ -263,51 +274,58 @@ export default {
  */
 async function syncProductVariants(localProductId, variantsDataFromApi, transformVariantFn, logger) {
   try {
-    // Delete existing variants for this product
-    const deleteResult = await db.query('DELETE FROM product_variants WHERE product_id = $1 RETURNING dolibarr_variant_id;', [localProductId]);
-    if (deleteResult.rowCount > 0) {
-      logger.info({ localProductId, count: deleteResult.rowCount, deleted_dolibarr_ids: deleteResult.rows.map(r => r.dolibarr_variant_id) }, `Deleted ${deleteResult.rowCount} existing variants for product.`);
+    const { rows: existingVariants } = await db.query('SELECT * FROM product_variants WHERE product_id = $1', [localProductId]);
+    const existingVariantsMap = new Map(existingVariants.map(v => [v.dolibarr_variant_id, v]));
+
+    const variantsFromApiMap = new Map(variantsDataFromApi.map(v => [v.id, v]));
+
+    // Delete variants that are no longer in the API
+    for (const existingVariant of existingVariants) {
+      if (!variantsFromApiMap.has(existingVariant.dolibarr_variant_id)) {
+        await db.query('DELETE FROM product_variants WHERE id = $1', [existingVariant.id]);
+        logger.info({ localProductId, variantId: existingVariant.id }, 'Deleted variant not present in API anymore.');
+      }
     }
 
-    if (!variantsDataFromApi || variantsDataFromApi.length === 0) {
-      logger.info({ localProductId }, 'No new variants data provided from API. All existing variants (if any) have been cleared.');
-      return;
-    }
-
-    let upsertedCount = 0;
+    // Insert or update variants from the API
     for (const dolibarrVariant of variantsDataFromApi) {
       if (!dolibarrVariant.id) {
         logger.warn({ localProductId, variantData: dolibarrVariant }, 'Skipping variant due to missing Dolibarr variant ID.');
         continue;
       }
-      // The transformVariantFn is expected to be passed from syncService,
-      // as it's currently defined there.
+
       const variantPayload = transformVariantFn(dolibarrVariant, localProductId);
+      const existingVariant = existingVariantsMap.get(dolibarrVariant.id);
 
-      const queryText = `
-        INSERT INTO product_variants (
-          dolibarr_variant_id, product_id, sku_variant, price_modifier, attributes,
-          dolibarr_created_at, dolibarr_updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (dolibarr_variant_id) DO UPDATE SET
-          product_id = EXCLUDED.product_id,
-          sku_variant = EXCLUDED.sku_variant,
-          price_modifier = EXCLUDED.price_modifier,
-          attributes = EXCLUDED.attributes,
-          dolibarr_created_at = EXCLUDED.dolibarr_created_at,
-          dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
-          updated_at = NOW()
-        RETURNING id;
-      `;
-      await db.query(queryText, [
-        variantPayload.dolibarr_variant_id, variantPayload.product_id, variantPayload.sku_variant,
-        variantPayload.price_modifier, variantPayload.attributes,
-        variantPayload.dolibarr_created_at, variantPayload.dolibarr_updated_at
-      ]);
-      upsertedCount++;
+      if (existingVariant) {
+        // Update existing variant
+        const queryText = `
+          UPDATE product_variants SET
+            sku_variant = $1, price_modifier = $2, attributes = $3,
+            dolibarr_created_at = $4, dolibarr_updated_at = $5, updated_at = NOW()
+          WHERE id = $6;
+        `;
+        await db.query(queryText, [
+          variantPayload.sku_variant, variantPayload.price_modifier, variantPayload.attributes,
+          variantPayload.dolibarr_created_at, variantPayload.dolibarr_updated_at, existingVariant.id
+        ]);
+        logger.info({ localProductId, variantId: existingVariant.id }, 'Updated variant.');
+      } else {
+        // Insert new variant
+        const queryText = `
+          INSERT INTO product_variants (
+            dolibarr_variant_id, product_id, sku_variant, price_modifier, attributes,
+            dolibarr_created_at, dolibarr_updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7);
+        `;
+        await db.query(queryText, [
+          variantPayload.dolibarr_variant_id, variantPayload.product_id, variantPayload.sku_variant,
+          variantPayload.price_modifier, variantPayload.attributes,
+          variantPayload.dolibarr_created_at, variantPayload.dolibarr_updated_at
+        ]);
+        logger.info({ localProductId, dolibarrVariantId: dolibarrVariant.id }, 'Inserted new variant.');
+      }
     }
-    logger.info({ localProductId, count: upsertedCount }, `Upserted ${upsertedCount} variants for product.`);
-
   } catch (error) {
     logger.error({ err: error, localProductId }, 'Error in syncProductVariants');
     throw error;
