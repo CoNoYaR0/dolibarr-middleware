@@ -1,7 +1,6 @@
 import dolibarrApi from './dolibarrApiService.js';
 import db from './dbService.js';
 import config from '../config/index.js';
-import path from 'path';
 import logger from '../utils/logger.js';
 import categoryController from '../controllers/categoryController.js';
 import productController from '../controllers/productController.js';
@@ -642,11 +641,7 @@ async function handleCategoryModify(objectData, eventLogger) {
       parent_id: localParentId,
     };
 
-    // Ensure dolibarr_category_id is not part of the payload for update, only other fields
-    const { dolibarr_category_id, ...updatePayload } = categoryPayload;
-
-
-    const updatedCategory = await categoryController.updateCategoryByDolibarrId(dolibarrCategoryId, updatePayload, eventLogger);
+    const updatedCategory = await categoryController.updateCategoryByDolibarrId(dolibarrCategoryId, categoryPayload, eventLogger);
     if (updatedCategory) {
       eventLogger.info({ dolibarrCategoryId }, 'Category updated successfully.');
     } else {
@@ -792,6 +787,7 @@ async function handleWebhook(payload, parentLogger) {
         break;
       default:
         eventLogger.warn(`Unknown triggercode: ${triggercode}. No action taken.`);
+        break;
     }
     eventLogger.info('Webhook processing logic complete.');
   } catch (error) {

@@ -24,7 +24,7 @@ fastify.register(formBody, {
   parser: (str) => {
     try {
       return JSON.parse(str);
-    } catch (e) {
+    } catch {
       // Not a valid JSON, return an empty object or handle as an error
       return {};
     }
@@ -59,7 +59,7 @@ const healthCheckSchema = {
   },
 };
 
-fastify.get('/health', { schema: healthCheckSchema }, async (request, reply) => {
+fastify.get('/health', { schema: healthCheckSchema }, async () => {
   // Optionally, include database connection status in health check later
   // const dbOk = await dbService.testConnection();
   return {
@@ -121,6 +121,10 @@ fastify.register(apiRoutes, { prefix: '/api/v1' }); // Example prefix
 // Centralized Error Handler
 fastify.setErrorHandler((error, request, reply) => {
   request.log.error({ err: error, requestId: request.id }, 'Unhandled error occurred');
+
+  if (reply.sent) {
+    return;
+  }
 
   // Basic error response
   let statusCode = error.statusCode || 500;

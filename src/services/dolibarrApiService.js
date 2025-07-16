@@ -48,7 +48,7 @@ async function request(endpoint, options = {}, params = {}, isDocument = false) 
       let errorData;
       try {
         errorData = await response.json();
-      } catch (e) {
+      } catch {
         // If response is not JSON, use text
         errorData = { message: await response.text() };
       }

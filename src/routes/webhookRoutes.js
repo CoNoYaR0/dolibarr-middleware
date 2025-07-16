@@ -3,9 +3,9 @@ import syncService from '../services/syncService.js'; // Import the default obje
 const { handleWebhook } = syncService; // Destructure to get the named function
 import config from '../config/index.js';
 
-async function webhookRoutes(fastify, options) {
+async function webhookRoutes(fastify) {
   fastify.post('/webhook/:secret', async (request, reply) => {
-    const { body: payload, params, headers } = request;
+    const { body: payload, params } = request;
     const logger = request.log;
 
     // Security Check: Validate webhook secret from URL parameter
