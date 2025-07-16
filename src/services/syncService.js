@@ -249,17 +249,9 @@ async function syncProductImageMetadata() {
 
       for (const dolibarrImageInfo of imagesToProcess) {
         logger.info({ dolibarrImageInfo }, 'Processing image...');
-        let filenameFromDolibarr = dolibarrImageInfo.filename;
+        let filenameFromDolibarr = dolibarrImageInfo.relativename;
         if (!filenameFromDolibarr) {
-            const imageUrl = dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url || dolibarrImageInfo.path || dolibarrImageInfo.filepath;
-            if (imageUrl) {
-                try {
-                    filenameFromDolibarr = path.basename(new URL(imageUrl, config.dolibarr.apiUrl).pathname);
-                } catch (e) {
-                    logger.warn({ err: e, imageUrl, productId: product.dolibarr_product_id }, `Could not parse filename from URL for image.`);
-                    filenameFromDolibarr = `image_${dolibarrImageInfo.id || Date.now()}${path.extname(imageUrl) || '.jpg'}`;
-                }
-            }
+          filenameFromDolibarr = dolibarrImageInfo.filename;
         }
 
         if (!filenameFromDolibarr) {
