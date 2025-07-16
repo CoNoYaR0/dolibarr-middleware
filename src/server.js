@@ -10,6 +10,7 @@ import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUi from '@fastify/swagger-ui';
 import fastifyHelmet from '@fastify/helmet';
 import formBody from '@fastify/formbody';
+import cors from '@fastify/cors';
 
 // Instantiate Fastify with logger settings from config
 const fastify = Fastify({
@@ -39,6 +40,12 @@ await fastify.register(fastifyHelmet, {
   // and you understand the implications. It's better to configure CSP properly.
   // contentSecurityPolicy: false, // Or provide a full CSP object
   // crossOriginEmbedderPolicy: false, // if causing issues with embeds
+});
+
+// Register CORS
+await fastify.register(cors, {
+  origin: 'https://stainedglass.tn',
+  methods: ['GET'],
 });
 
 
