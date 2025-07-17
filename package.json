@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "sync:initial": "node -r dotenv/config src/services/syncService.js",
-    "postdeploy": "npm install && npm run sync:initial && npm start"
+    "postdeploy": "npm install && npm run sync:initial & npm start"
   },
   "keywords": [
     "dolibarr",
