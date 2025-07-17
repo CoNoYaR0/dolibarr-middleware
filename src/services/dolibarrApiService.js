@@ -103,14 +103,31 @@ async function getProducts(queryParams = {}) {
 }
 
 /**
- * Fetches details for a single product.
+ * Fetches details for a single product and formats its images.
  * @param {number|string} productId - The ID of the product.
- * @returns {Promise<object>} The product details.
+ * @returns {Promise<object>} The product details with a structured images array.
  */
 async function getProductById(productId) {
   const product = await request(`/products/${productId}`);
   const documents = await request('/documents', {}, { modulepart: 'product', id: productId });
-  product.photos = documents;
+
+  const images = [];
+  if (documents && Array.isArray(documents)) {
+    for (const doc of documents) {
+      // Basic check if it's an image
+      if (doc.filename.match(/\.(jpg|jpeg|png|gif)$/i)) {
+        const fullUrl = `${config.cdn.baseUrl}${doc.share_path}/${doc.filename}`;
+        const thumbUrl = `${config.cdn.baseUrl}${doc.share_path}/thumbs/${doc.filename.replace(/(\.[\w\d_-]+)$/i, '_small$1')}`;
+
+        images.push({ type: 'full', url: fullUrl });
+        images.push({ type: 'thumbnail', url: thumbUrl });
+      }
+    }
+  }
+
+  product.images = images; // Attach the new structured array
+  delete product.photos; // Optional: clean up the old 'photos' property if it exists
+
   return product;
 }
 
