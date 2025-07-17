@@ -94,6 +94,8 @@ async function listProducts(request, reply) {
     const totalProducts = parseInt(countResult[0].count, 10);
     const totalPages = Math.ceil(totalProducts / parseInt(limit, 10));
 
+    request.log.info({ productCount: products.length, totalProducts }, 'Products fetched from database');
+
     reply.send({
       data: products,
       pagination: {
