@@ -36,8 +36,8 @@ async function listProducts(request, reply) {
   let querySelect = `
     SELECT
       p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.price, p.slug, p.is_active,
-      -- Aggregate images (example: get first image as thumbnail_url)
-      (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url
+      -- Get the thumbnail URL, preferring 'thumbnail' type
+      (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id AND pi.image_type = 'thumbnail' ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url
   `;
 
   const queryParams = [];
@@ -134,13 +134,12 @@ async function getProductBySlug(request, reply) {
     const variantsQuery = 'SELECT * FROM product_variants WHERE product_id = $1 ORDER BY id ASC'; // Add order if needed
     const { rows: variants } = await db.query(variantsQuery, [product.id]);
 
-    // 3. Fetch product images (for base product and all its variants)
-    // This query fetches all images associated with the product or any of its variants.
-    // Frontend might need to associate them correctly.
+    // 3. Fetch product images
     const imagesQuery = `
-      SELECT * FROM product_images
-      WHERE product_id = $1 OR variant_id IN (SELECT id FROM product_variants WHERE product_id = $1)
-      ORDER BY variant_id NULLS FIRST, display_order ASC, id ASC
+      SELECT image_type as type, cdn_url as url
+      FROM product_images
+      WHERE product_id = $1
+      ORDER BY display_order ASC, id ASC
     `;
     const { rows: images } = await db.query(imagesQuery, [product.id]);
 
