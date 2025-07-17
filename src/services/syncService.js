@@ -129,7 +129,7 @@ async function syncProducts() {
   const limit = 100;
   try {
     while (true) {
-      const params = { limit: limit, page: currentPage };
+      const params = { limit: limit, page: currentPage, sqlfilters: '(t.tosell = 1)' };
       const productsPage = await dolibarrApi.getProducts(params);
       if (!productsPage || productsPage.length === 0) break;
       allProducts = allProducts.concat(productsPage);
