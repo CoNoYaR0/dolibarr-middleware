@@ -63,7 +63,7 @@ async function listProducts(request, reply) {
   }
 
   // Add more conditions for other filters here (e.g., is_active = true)
-  // conditions.push(`p.is_active = TRUE`); // Example: always filter for active products
+  conditions.push(`p.is_active = TRUE`); // Example: always filter for active products
 
   let whereClause = '';
   if (conditions.length > 0) {
@@ -243,6 +243,9 @@ async function searchProducts(request, reply) {
     const { rows: countResult } = await db.query(countQuery, [`%${q}%`]);
     const totalProducts = parseInt(countResult[0].count, 10);
     const totalPages = Math.ceil(totalProducts / parseInt(limit, 10));
+
+    request.log.info({ productCount: products.length, totalProducts }, 'Products fetched from database');
+    console.log('Products sent to frontend:', products.length, products);
 
     reply.send({
       data: products,
