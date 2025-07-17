@@ -106,7 +106,15 @@ async function listProducts(request, reply) {
   } catch (error) {
     request.log.error({ err: error, query: request.query, requestId: request.id }, 'Error listing products');
     // throw error; // Or let centralized handler do its job
-    reply.code(500).send({ error: 'Failed to list products', message: error.message });
+    reply.send({
+      data: [],
+      pagination: {
+        total_products: 0,
+        total_pages: 0,
+        current_page: parseInt(page, 10),
+        per_page: parseInt(limit, 10),
+      },
+    });
   }
 }
 
