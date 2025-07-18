@@ -21,11 +21,10 @@ const TIMEOUT = config.dolibarr.timeout;
  */
 async function request(endpoint, options = {}, params = {}, isDocument = false) {
   const url = new URL(`${BASE_URL}${endpoint}`);
+  logger.info({ url }, 'Request URL:');
 
   // Add query parameters
   Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-
-  logger.info({ url: url.href }, 'Request URL:');
 
   const defaultHeaders = {
     'Accept': isDocument ? 'application/octet-stream' : 'application/json',
@@ -104,31 +103,14 @@ async function getProducts(queryParams = {}) {
 }
 
 /**
- * Fetches details for a single product and formats its images.
+ * Fetches details for a single product.
  * @param {number|string} productId - The ID of the product.
- * @returns {Promise<object>} The product details with a structured images array.
+ * @returns {Promise<object>} The product details.
  */
 async function getProductById(productId) {
   const product = await request(`/products/${productId}`);
   const documents = await request('/documents', {}, { modulepart: 'product', id: productId });
-
-  const images = [];
-  if (documents && Array.isArray(documents)) {
-    for (const doc of documents) {
-      // Basic check if it's an image
-      if (doc && doc.filename && doc.filename.match(/\.(jpg|jpeg|png|gif)$/i)) {
-        const fullUrl = `${config.cdn.baseUrl}${doc.share_path}/${doc.filename}`;
-        const thumbUrl = `${config.cdn.baseUrl}${doc.share_path}/thumbs/${doc.filename.replace(/(\.[\w\d_-]+)$/i, '_small$1')}`;
-
-        images.push({ type: 'full', url: fullUrl });
-        images.push({ type: 'thumbnail', url: thumbUrl });
-      }
-    }
-  }
-
-  product.images = images; // Attach the new structured array
-  delete product.photos; // Optional: clean up the old 'photos' property if it exists
-
+  product.photos = documents;
   return product;
 }
 

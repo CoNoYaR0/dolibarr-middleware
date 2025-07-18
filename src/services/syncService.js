@@ -88,24 +88,22 @@ function transformStockLevel(dolibarrStockEntry, localProductId, localVariantId)
 // --- Sync Functions ---
 
 async function syncCategories() {
-  logger.info('[SYNC] Starting category synchronization...');
+  logger.info('Starting category synchronization...');
   let allCategories = [];
   let currentPage = 0;
   const limit = 100;
   try {
     while (true) {
       const params = { limit: limit, page: currentPage };
-      logger.info(`[SYNC] Fetching categories from Dolibarr... Page: ${currentPage}`);
       const categoriesPage = await dolibarrApi.getCategories(params);
       if (!categoriesPage || categoriesPage.length === 0) break;
       allCategories = allCategories.concat(categoriesPage);
       if (categoriesPage.length < limit) break;
       currentPage++;
     }
-    logger.info(`[SYNC] Fetched ${allCategories.length} categories.`);
+    logger.info(`Fetched ${allCategories.length} categories.`);
     for (const item of allCategories) {
       const data = transformCategory(item);
-      logger.info(`[SYNC] Writing category ${data.name} to Supabase...`);
       await db.query(
         `INSERT INTO categories (dolibarr_category_id, name, description, parent_dolibarr_category_id, dolibarr_created_at, dolibarr_updated_at)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -114,41 +112,37 @@ async function syncCategories() {
            dolibarr_created_at = EXCLUDED.dolibarr_created_at, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()`,
         [data.dolibarr_category_id, data.name, data.description, data.parent_dolibarr_category_id, data.dolibarr_created_at, data.dolibarr_updated_at]
       );
-      logger.info(`[SYNC] Category ${data.name} synchronized successfully.`);
     }
-    logger.info('[SYNC] Category synchronization finished.');
+    logger.info('Category synchronization finished.');
   } catch (error) {
-    logger.error({ err: error }, '[SYNC] Error during category synchronization');
+    logger.error({ err: error }, 'Error during category synchronization');
   }
 }
 
 async function syncProducts() {
-  logger.info('[SYNC] Starting product synchronization...');
+  logger.info('Starting product synchronization...');
   const catMapRes = await db.query('SELECT dolibarr_category_id, id FROM categories WHERE dolibarr_category_id IS NOT NULL;');
   const catMap = new Map(catMapRes.rows.map(r => [parseInt(r.dolibarr_category_id, 10), r.id]));
-  logger.info({ catMapContent: Array.from(catMap.entries()) }, '[SYNC] Category map created:');
+  logger.info({ catMapContent: Array.from(catMap.entries()) }, 'Category map created:');
   let allProducts = [];
   let currentPage = 0;
   const limit = 100;
   try {
     while (true) {
       const params = { limit: limit, page: currentPage };
-      logger.info(`[SYNC] Fetching products from Dolibarr... Page: ${currentPage}`);
       const productsPage = await dolibarrApi.getProducts(params);
       if (!productsPage || productsPage.length === 0) break;
       allProducts = allProducts.concat(productsPage);
       if (productsPage.length < limit) break;
       currentPage++;
     }
-    logger.info(`[SYNC] Fetched ${allProducts.length} products.`);
+    logger.info(`Fetched ${allProducts.length} products.`);
     for (const dolibarrProductData of allProducts) {
-      logger.info(`[SYNC] Processing product ${dolibarrProductData.label}...`);
-      logger.info({ productId: dolibarrProductData.id, ref: dolibarrProductData.ref, fk_categorie: dolibarrProductData.fk_categorie, api_category_id: dolibarrProductData.category_id }, '[SYNC] Raw product category fields from API:');
+      logger.info({ productId: dolibarrProductData.id, ref: dolibarrProductData.ref, fk_categorie: dolibarrProductData.fk_categorie, api_category_id: dolibarrProductData.category_id }, 'Raw product category fields from API:');
 
       const productToInsert = transformProduct(dolibarrProductData); // Pass only dolibarrProductData
       if (!productToInsert.dolibarr_product_id) continue;
 
-      logger.info(`[SYNC] Writing product ${productToInsert.name} to Supabase...`);
       const { rows: insertedProductRows } = await db.query(
         `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, is_active, slug, dolibarr_created_at, dolibarr_updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -163,62 +157,56 @@ async function syncProducts() {
       if (insertedProductRows && insertedProductRows.length > 0) {
         const localProductId = insertedProductRows[0].id;
         const currentDolibarrProductId = insertedProductRows[0].dolibarr_product_id;
-        logger.info(`[SYNC] Product ${productToInsert.name} synchronized successfully.`);
 
         await db.query('DELETE FROM product_categories_map WHERE product_id = $1', [localProductId]);
-        logger.info({ localProductId }, `[SYNC] Cleared existing category links for product.`);
+        logger.info({ localProductId }, `Cleared existing category links for product.`);
 
         try {
-          logger.info(`[SYNC] Fetching categories for product ${productToInsert.name}...`);
           const productCategoriesArray = await dolibarrApi.getProductCategories(currentDolibarrProductId);
-          logger.info({ productId: currentDolibarrProductId, fetchedCategories: productCategoriesArray }, '[SYNC] Categories fetched for product:');
+          logger.info({ productId: currentDolibarrProductId, fetchedCategories: productCategoriesArray }, 'Categories fetched for product:');
 
           if (productCategoriesArray && productCategoriesArray.length > 0) {
             for (const productDolibarrCategory of productCategoriesArray) {
               if (productDolibarrCategory && productDolibarrCategory.id) {
                 const localCatId = catMap.get(parseInt(productDolibarrCategory.id, 10));
                 if (localCatId) {
-                  logger.info(`[SYNC] Linking product ${productToInsert.name} to category ${productDolibarrCategory.label}...`);
                   await db.query(
                     'INSERT INTO product_categories_map (product_id, category_id) VALUES ($1, $2) ON CONFLICT (product_id, category_id) DO NOTHING',
                     [localProductId, localCatId]
                   );
-                  logger.info({ productId: currentDolibarrProductId, localProductId, dolibarrCategoryId: productDolibarrCategory.id, localCategoryId: localCatId }, '[SYNC] Linked product to category in map table.');
+                  logger.info({ productId: currentDolibarrProductId, localProductId, dolibarrCategoryId: productDolibarrCategory.id, localCategoryId: localCatId }, 'Linked product to category in map table.');
                 } else {
-                  logger.warn({ productId: currentDolibarrProductId, dolibarrCategoryId: productDolibarrCategory.id }, '[SYNC] Local category mapping not found for product category.');
+                  logger.warn({ productId: currentDolibarrProductId, dolibarrCategoryId: productDolibarrCategory.id }, 'Local category mapping not found for product category.');
                 }
               } else {
-                logger.info({ productId: currentDolibarrProductId, categoryItem: productDolibarrCategory }, '[SYNC] No valid category ID found in productCategoriesArray item.');
+                logger.info({ productId: currentDolibarrProductId, categoryItem: productDolibarrCategory }, 'No valid category ID found in productCategoriesArray item.');
               }
             }
           } else {
-            logger.info({ productId: currentDolibarrProductId }, '[SYNC] No categories returned by getProductCategories for this product.');
+            logger.info({ productId: currentDolibarrProductId }, 'No categories returned by getProductCategories for this product.');
           }
         } catch (catError) {
-          logger.error({ err: catError, productId: currentDolibarrProductId }, `[SYNC] Error fetching or linking categories for product.`);
+          logger.error({ err: catError, productId: currentDolibarrProductId }, `Error fetching or linking categories for product.`);
         }
       }
     }
-    logger.info('[SYNC] Product synchronization finished.');
+    logger.info('Product synchronization finished.');
   } catch (error) {
-    logger.error({ err: error }, '[SYNC] Error during product synchronization');
+    logger.error({ err: error }, 'Error during product synchronization');
   }
 }
 
 async function syncProductVariants() {
-  logger.info('[SYNC] Starting product variant synchronization...');
+  logger.info('Starting product variant synchronization...');
   const prodsRes = await db.query('SELECT id, dolibarr_product_id FROM products WHERE dolibarr_product_id IS NOT NULL;');
-  if (prodsRes.rows.length === 0) { logger.info('[SYNC] No products to sync variants for.'); return; }
+  if (prodsRes.rows.length === 0) { logger.info('No products to sync variants for.'); return; }
   for (const p of prodsRes.rows) {
     try {
-      logger.info(`[SYNC] Fetching variants for product ${p.dolibarr_product_id}...`);
       const variants = await dolibarrApi.getProductVariants(p.dolibarr_product_id);
       if (!variants || variants.length === 0) continue;
-      logger.info(`[SYNC] Found ${variants.length} variants for product ${p.dolibarr_product_id}.`);
       for (const v of variants) {
         if (!v.id) continue;
         const data = transformVariant(v, p.id);
-        logger.info(`[SYNC] Writing variant ${data.sku_variant} to Supabase...`);
         await db.query(
           `INSERT INTO product_variants (dolibarr_variant_id, product_id, sku_variant, price_modifier, attributes, dolibarr_created_at, dolibarr_updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -228,46 +216,45 @@ async function syncProductVariants() {
              dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()`,
           [data.dolibarr_variant_id, data.product_id, data.sku_variant, data.price_modifier, data.attributes, data.dolibarr_created_at, data.dolibarr_updated_at]
         );
-        logger.info(`[SYNC] Variant ${data.sku_variant} synchronized successfully.`);
       }
     } catch (error) {
-      logger.error({ err: error, productId: p.dolibarr_product_id }, `[SYNC] Error syncing variants`);
+      logger.error({ err: error, productId: p.dolibarr_product_id }, `Error syncing variants`);
     }
   }
-  logger.info('[SYNC] Product variant synchronization finished.');
+  logger.info('Product variant synchronization finished.');
 }
 
 async function syncProductImageMetadata() {
-  logger.info('[SYNC] Starting product image metadata synchronization...');
+  logger.info('Starting product image metadata synchronization...');
   const productsResult = await db.query('SELECT id, dolibarr_product_id FROM products WHERE dolibarr_product_id IS NOT NULL;');
   if (productsResult.rows.length === 0) {
-    logger.info('[SYNC] No products found to sync image metadata for.');
+    logger.info('No products found to sync image metadata for.');
     return;
   }
 
   for (const product of productsResult.rows) {
-    logger.info(`[SYNC] Fetching image metadata for Dolibarr product ID: ${product.dolibarr_product_id} (Local ID: ${product.id})`);
+    logger.info(`Fetching image metadata for Dolibarr product ID: ${product.dolibarr_product_id} (Local ID: ${product.id})`);
     try {
       const dolibarrProductData = await dolibarrApi.getProductById(product.dolibarr_product_id);
-      logger.info({ dolibarrProductData }, '[SYNC] Dolibarr product data:');
+      logger.info({ dolibarrProductData }, 'Dolibarr product data:');
       const imagesToProcess = dolibarrProductData.photos || dolibarrProductData.images || [];
-      logger.info({ imagesToProcess }, '[SYNC] Images to process:');
+      logger.info({ imagesToProcess }, 'Images to process:');
 
       if (!imagesToProcess || imagesToProcess.length === 0) {
-        logger.info(`[SYNC] No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
+        logger.info(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
         continue;
       }
-      logger.info(`[SYNC] Found ${imagesToProcess.length} potential image entries for product ID: ${product.dolibarr_product_id}`);
+      logger.info(`Found ${imagesToProcess.length} potential image entries for product ID: ${product.dolibarr_product_id}`);
 
       for (const dolibarrImageInfo of imagesToProcess) {
-        logger.info({ dolibarrImageInfo }, '[SYNC] Processing image...');
+        logger.info({ dolibarrImageInfo }, 'Processing image...');
         let filenameFromDolibarr = dolibarrImageInfo.relativename;
         if (!filenameFromDolibarr) {
           filenameFromDolibarr = dolibarrImageInfo.filename;
         }
 
         if (!filenameFromDolibarr) {
-          logger.warn({ dolibarrImageInfo, productId: product.dolibarr_product_id }, `[SYNC] Skipping image due to missing filename in metadata`);
+          logger.warn({ dolibarrImageInfo, productId: product.dolibarr_product_id }, `Skipping image due to missing filename in metadata`);
           continue;
         }
 
@@ -278,7 +265,6 @@ async function syncProductImageMetadata() {
             filenameFromDolibarr
           );
           imageDataForDb.cdn_url = cdnUrl;
-          logger.info(`[SYNC] Writing image ${cdnUrl} to Supabase...`);
 
           const imageQueryText = `
             INSERT INTO product_images (
@@ -302,36 +288,35 @@ async function syncProductImageMetadata() {
             imageDataForDb.alt_text, imageDataForDb.display_order, imageDataForDb.is_thumbnail,
             imageDataForDb.dolibarr_image_id, imageDataForDb.original_dolibarr_filename, imageDataForDb.original_dolibarr_path,
           ]);
-          logger.info({ cdnUrl: imageDataForDb.cdn_url, productId: product.dolibarr_product_id }, `[SYNC] Upserted image metadata`);
+          logger.info({ cdnUrl: imageDataForDb.cdn_url, productId: product.dolibarr_product_id }, `Upserted image metadata`);
         } catch (dbUpsertError) {
-          logger.error({ err: dbUpsertError, filenameFromDolibarr, productId: product.dolibarr_product_id }, `[SYNC] Error upserting image metadata`);
+          logger.error({ err: dbUpsertError, filenameFromDolibarr, productId: product.dolibarr_product_id }, `Error upserting image metadata`);
         }
       }
     } catch (error) {
-      logger.error({ err: error, productId: product.dolibarr_product_id }, `[SYNC] Error fetching image metadata`);
+      logger.error({ err: error, productId: product.dolibarr_product_id }, `Error fetching image metadata`);
     }
   }
-  logger.info('[SYNC] Product image metadata synchronization finished.');
+  logger.info('Product image metadata synchronization finished.');
 }
 
 
 async function syncStockLevels() {
-  logger.info('[SYNC] Starting stock level synchronization...');
+  logger.info('Starting stock level synchronization...');
   const prodsRes = await db.query('SELECT p.id as local_product_id, p.dolibarr_product_id, pv.id as local_variant_id, pv.dolibarr_variant_id FROM products p LEFT JOIN product_variants pv ON p.id = pv.product_id WHERE p.dolibarr_product_id IS NOT NULL;');
-  if (prodsRes.rows.length === 0) { logger.info('[SYNC] No products/variants to sync stock for.'); return; }
+  if (prodsRes.rows.length === 0) { logger.info('No products/variants to sync stock for.'); return; }
 
-  logger.info({ productsFromDB: prodsRes.rows }, '[SYNC] Products available for stock mapping:');
+  logger.info({ productsFromDB: prodsRes.rows }, 'Products available for stock mapping:');
 
   const uniqProdIds = [...new Set(prodsRes.rows.map(r => r.dolibarr_product_id))];
 
   for (const dlbProdId of uniqProdIds) {
     try {
-      logger.info(`[SYNC] Fetching stock for product ${dlbProdId}...`);
       const stockApiData = await dolibarrApi.getProductStock(dlbProdId);
-      logger.info({ dlbProdId, stockApiDataFromDolibarr: stockApiData }, '[SYNC] Raw stock API data received:');
+      logger.info({ dlbProdId, stockApiDataFromDolibarr: stockApiData }, 'Raw stock API data received:');
 
       if (!stockApiData || !stockApiData.stock_warehouses || Object.keys(stockApiData.stock_warehouses).length === 0) {
-        logger.info({ dlbProdId }, '[SYNC] No stock_warehouses data or empty stock_warehouses for product.');
+        logger.info({ dlbProdId }, 'No stock_warehouses data or empty stock_warehouses for product.');
         continue;
       }
 
@@ -359,12 +344,11 @@ async function syncStockLevels() {
             locProdId = productRecord.local_product_id;
           }
         } else {
-          logger.warn({ dlbProdId }, "[SYNC] Dolibarr Product ID for stock entry not found in local product/variant map. Skipping warehouse entry.");
+          logger.warn({ dlbProdId }, "Dolibarr Product ID for stock entry not found in local product/variant map. Skipping warehouse entry.");
           continue;
         }
 
         const data = transformStockLevel(syntheticEntry, locProdId, locVarId);
-        logger.info(`[SYNC] Writing stock for product ${dlbProdId} to Supabase...`);
         await db.query(
           `INSERT INTO stock_levels (product_id, variant_id, quantity, warehouse_id, dolibarr_updated_at, last_checked_at)
            VALUES ($1, $2, $3, $4, $5, NOW())
@@ -373,32 +357,26 @@ async function syncStockLevels() {
              last_checked_at = NOW(), updated_at = NOW()`,
           [data.product_id, data.variant_id, data.quantity, data.warehouse_id, data.dolibarr_updated_at]
         );
-        logger.info(`[SYNC] Stock for product ${dlbProdId} synchronized successfully.`);
       }
     } catch (error) {
       if (!error.status || error.status !== 404) {
-        logger.error({ err: error, productId: dlbProdId }, `[SYNC] Error processing stock for product`);
+        logger.error({ err: error, productId: dlbProdId }, `Error processing stock for product`);
       }
     }
   }
-  logger.info('[SYNC] Stock level synchronization finished.');
+  logger.info('Stock level synchronization finished.');
 }
 
 // --- Main Sync Orchestrator ---
 
 async function runInitialSync() {
-  try {
-    logger.info('[SYNC] === Starting Full Initial Data Synchronization ===');
-    await syncCategories();
-    await syncProducts();
-    await syncProductVariants();
-    await syncProductImageMetadata();
-    await syncStockLevels();
-    logger.info('[SYNC] === Full Initial Data Synchronization Finished ===');
-  } catch (error) {
-    logger.error({ err: error }, '[SYNC] === Full Initial Data Synchronization Failed ===');
-    process.exit(1);
-  }
+  logger.info('=== Starting Full Initial Data Synchronization ===');
+  await syncCategories();
+  await syncProducts();
+  await syncProductVariants();
+  await syncProductImageMetadata();
+  await syncStockLevels();
+  logger.info('=== Full Initial Data Synchronization Finished ===');
 }
 
 export default {
