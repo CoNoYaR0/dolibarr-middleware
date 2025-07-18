@@ -28,7 +28,7 @@ function transformProduct(dolibarrProduct) { // categoryDolibarrToLocalIdMap no 
     long_description: dolibarrProduct.note_public || dolibarrProduct.long_description,
     price: parseFloat(dolibarrProduct.price) || 0,
     // category_id removed - will be handled by product_categories_map
-    is_active: !dolibarrProduct.status_tosell || parseInt(dolibarrProduct.status_tosell, 10) === 1,
+    is_active: dolibarrProduct.status_tosell === null || dolibarrProduct.status_tosell === undefined || parseInt(dolibarrProduct.status_tosell, 10) === 1,
     slug: dolibarrProduct.ref ? dolibarrProduct.ref.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `product-${dolibarrProduct.id}`,
     dolibarr_created_at: dolibarrProduct.date_creation ? new Date(parseInt(dolibarrProduct.date_creation, 10) * 1000) : null,
     dolibarr_updated_at: dolibarrProduct.tms ? new Date(parseInt(dolibarrProduct.tms, 10) * 1000) : null,

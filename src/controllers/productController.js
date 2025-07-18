@@ -63,13 +63,11 @@ async function listProducts(request, reply) {
   }
 
   // Add more conditions for other filters here (e.g., is_active = true)
-  conditions.push(`p.is_active = TRUE`); // Example: always filter for active products
+  // conditions.push(`p.is_active = TRUE`); // Example: always filter for active products
 
   let whereClause = '';
   if (conditions.length > 0) {
     whereClause = ` WHERE ${conditions.join(' AND ')}`;
-  } else {
-    whereClause = ` WHERE p.is_active = TRUE`;
   }
 
   // Count total products for pagination (matching filters)
@@ -98,6 +96,7 @@ async function listProducts(request, reply) {
 
     request.log.info({ productCount: products.length, totalProducts, products, countResult }, 'Products fetched from database');
     console.log('Products sent to frontend:', products.length, products);
+    console.log('Raw Supabase response:', products);
 
     reply.send({
       data: products,
