@@ -68,6 +68,8 @@ async function listProducts(request, reply) {
   let whereClause = '';
   if (conditions.length > 0) {
     whereClause = ` WHERE ${conditions.join(' AND ')}`;
+  } else {
+    whereClause = ` WHERE p.is_active = TRUE`;
   }
 
   // Count total products for pagination (matching filters)
