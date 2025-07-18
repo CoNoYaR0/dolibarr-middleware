@@ -115,7 +115,7 @@ async function getProductById(productId) {
   if (documents && Array.isArray(documents)) {
     for (const doc of documents) {
       // Basic check if it's an image
-      if (doc.filename.match(/\.(jpg|jpeg|png|gif)$/i)) {
+      if (doc && doc.filename && doc.filename.match(/\.(jpg|jpeg|png|gif)$/i)) {
         const fullUrl = `${config.cdn.baseUrl}${doc.share_path}/${doc.filename}`;
         const thumbUrl = `${config.cdn.baseUrl}${doc.share_path}/thumbs/${doc.filename.replace(/(\.[\w\d_-]+)$/i, '_small$1')}`;
 
