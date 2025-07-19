@@ -73,7 +73,7 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
 
   return {
     product_id: localProductId,
-    variant_id: localVariantId,
+    variant_id: dolibarrImageInfo.variant_id || localVariantId,
     s3_bucket: null,
     s3_key: null,
     cdn_url: cdnUrl,
@@ -251,6 +251,15 @@ async function syncProductImageMetadata() {
       const imagesToProcess = dolibarrProductData.photos || dolibarrProductData.images || [];
       logger.info({ imagesToProcess }, 'Images to process:');
 
+      // Also fetch images for variants
+      const variantsResult = await db.query('SELECT id, dolibarr_variant_id FROM product_variants WHERE product_id = $1', [product.id]);
+      for (const variant of variantsResult.rows) {
+        const variantData = await dolibarrApi.getProductById(variant.dolibarr_variant_id);
+        if (variantData.photos) {
+          imagesToProcess.push(...variantData.photos.map(p => ({...p, variant_id: variant.id})));
+        }
+      }
+
       if (!imagesToProcess || imagesToProcess.length === 0) {
         logger.warn(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
         continue;
@@ -282,7 +291,7 @@ async function syncProductImageMetadata() {
               dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path,
               s3_bucket, s3_key
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
-            ON CONFLICT (product_id, original_dolibarr_filename)
+            ON CONFLICT (product_id, variant_id, original_dolibarr_filename)
             DO UPDATE SET
               cdn_url = EXCLUDED.cdn_url,
               alt_text = EXCLUDED.alt_text,
