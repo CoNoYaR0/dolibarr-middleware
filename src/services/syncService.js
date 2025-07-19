@@ -57,15 +57,13 @@ function transformVariant(dolibarrVariant, localProductId) {
   };
 }
 
-function transformProductImage(dolibarrImageInfo, localProductId, localVariantId, filenameFromDolibarr) {
+function transformProductImage(dolibarrImageInfo, localProductId, localVariantId, filenameFromDolibarr, dolibarrProductData) {
   const sanitizedFilename = (filenameFromDolibarr || `placeholder_image_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
 
-  // Extract the product folder from the path
-  const dolibarrPath = dolibarrImageInfo.path || dolibarrImageInfo.filepath || '';
-  const productFolder = dolibarrPath.split('/')[0];
+  const productFolder = dolibarrProductData.ref;
 
   let cdnUrl;
-  if (productFolder && productFolder !== sanitizedFilename) {
+  if (productFolder) {
     cdnUrl = `${config.cdn.baseUrl}${productFolder}/${sanitizedFilename}`;
   } else {
     cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
@@ -84,7 +82,7 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
     is_thumbnail: dolibarrImageInfo.is_thumbnail || false,
     dolibarr_image_id: dolibarrImageInfo.id || dolibarrImageInfo.ref,
     original_dolibarr_filename: filenameFromDolibarr,
-    original_dolibarr_path: dolibarrPath,
+    original_dolibarr_path: dolibarrImageInfo.path || dolibarrImageInfo.filepath || '',
   };
 }
 
@@ -274,7 +272,8 @@ async function syncProductImageMetadata() {
         try {
           const imageDataForDb = transformProductImage(
             dolibarrImageInfo, product.id, null,
-            filenameFromDolibarr
+            filenameFromDolibarr,
+            dolibarrProductData
           );
 
           const imageQueryText = `
