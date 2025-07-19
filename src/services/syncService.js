@@ -59,7 +59,19 @@ function transformVariant(dolibarrVariant, localProductId) {
 
 function transformProductImage(dolibarrImageInfo, localProductId, localVariantId, filenameFromDolibarr) {
   const sanitizedFilename = (filenameFromDolibarr || `placeholder_image_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
-  const cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
+
+  // Extract the product folder from the path
+  const dolibarrPath = dolibarrImageInfo.path || dolibarrImageInfo.filepath || '';
+  const pathParts = dolibarrPath.split('/');
+  const productFolder = pathParts.length > 1 ? pathParts[0] : '';
+
+  let cdnUrl;
+  if (productFolder) {
+    cdnUrl = `${config.cdn.baseUrl}${productFolder}/${sanitizedFilename}`;
+  } else {
+    cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
+  }
+
   return {
     product_id: localProductId,
     variant_id: localVariantId,
@@ -71,7 +83,7 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
     is_thumbnail: dolibarrImageInfo.is_thumbnail || false,
     dolibarr_image_id: dolibarrImageInfo.id || dolibarrImageInfo.ref,
     original_dolibarr_filename: filenameFromDolibarr,
-    original_dolibarr_path: dolibarrImageInfo.path || dolibarrImageInfo.filepath || dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url,
+    original_dolibarr_path: dolibarrPath,
   };
 }
 
@@ -259,12 +271,10 @@ async function syncProductImageMetadata() {
         }
 
         try {
-          const cdnUrl = `${config.cdn.baseUrl}${filenameFromDolibarr}`;
           const imageDataForDb = transformProductImage(
             dolibarrImageInfo, product.id, null,
             filenameFromDolibarr
           );
-          imageDataForDb.cdn_url = cdnUrl;
 
           const imageQueryText = `
             INSERT INTO product_images (
