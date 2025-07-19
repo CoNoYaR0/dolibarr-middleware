@@ -49,6 +49,7 @@ const config = {
   },
   cdn: {
     baseUrl: process.env.CDN_BASE_URL || 'https://cdn.stainedglass.tn/stainedglass-img-cache/', // Example
+    fallbackImageUrl: process.env.FALLBACK_IMAGE_URL || 'https://cdn.stainedglass.tn/placeholder.jpg',
   },
   // aws: { // AWS configuration removed as per new strategy
   //   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
