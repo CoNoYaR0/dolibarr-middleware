@@ -24,13 +24,13 @@ function transformProduct(dolibarrProduct) { // categoryDolibarrToLocalIdMap no 
     dolibarr_product_id: dolibarrProduct.id,
     sku: dolibarrProduct.ref,
     name: dolibarrProduct.label || dolibarrProduct.name,
-    description: dolibarrProduct.description,
-    long_description: dolibarrProduct.note_public || dolibarrProduct.long_description,
+    description: dolibarrProduct.description || '',
+    long_description: dolibarrProduct.note_public || dolibarrProduct.long_description || '',
     price: parseFloat(dolibarrProduct.price) || 0,
     // category_id removed - will be handled by product_categories_map
     is_active: !dolibarrProduct.status_tosell || parseInt(dolibarrProduct.status_tosell, 10) === 1,
     slug: dolibarrProduct.ref ? dolibarrProduct.ref.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `product-${dolibarrProduct.id}`,
-    dolibarr_created_at: dolibarrProduct.date_creation ? new Date(parseInt(dolibarrProduct.date_creation, 10) * 1000) : null,
+    dolibarr_created_at: dolibarrProduct.date_creation ? new Date(parseInt(dolibarrProduct.date_creation, 10) * 1000) : new Date(0),
     dolibarr_updated_at: dolibarrProduct.tms ? new Date(parseInt(dolibarrProduct.tms, 10) * 1000) : null,
   };
 }
@@ -252,7 +252,7 @@ async function syncProductImageMetadata() {
       logger.info({ imagesToProcess }, 'Images to process:');
 
       if (!imagesToProcess || imagesToProcess.length === 0) {
-        logger.info(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
+        logger.warn(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
         continue;
       }
       logger.info(`Found ${imagesToProcess.length} potential image entries for product ID: ${product.dolibarr_product_id}`);
@@ -326,7 +326,7 @@ async function syncStockLevels() {
       logger.info({ dlbProdId, stockApiDataFromDolibarr: stockApiData }, 'Raw stock API data received:');
 
       if (!stockApiData || !stockApiData.stock_warehouses || Object.keys(stockApiData.stock_warehouses).length === 0) {
-        logger.info({ dlbProdId }, 'No stock_warehouses data or empty stock_warehouses for product.');
+        logger.warn({ dlbProdId }, 'No stock_warehouses data or empty stock_warehouses for product.');
         continue;
       }
 
