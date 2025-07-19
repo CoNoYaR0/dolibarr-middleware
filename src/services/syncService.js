@@ -70,6 +70,8 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
   } else {
     cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
   }
+  // Remove double slashes
+  cdnUrl = cdnUrl.replace(/([^:]\/)\/+/g, "$1");
 
   return {
     product_id: localProductId,
