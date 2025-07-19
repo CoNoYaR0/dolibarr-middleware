@@ -37,8 +37,12 @@ async function listProducts(request, reply) {
   let querySelect = `
     SELECT
       p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.price, p.slug, p.is_active,
-      -- Aggregate images (example: get first image as thumbnail_url)
-      COALESCE((SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1), '${config.cdn.fallbackImageUrl}') as thumbnail_url,
+      -- Aggregate images
+      (
+        SELECT COALESCE(json_agg(pi.*), '[]'::json)
+        FROM product_images pi
+        WHERE pi.product_id = p.id
+      ) as images,
       -- Aggregate categories
       (
         SELECT COALESCE(json_agg(c.*), '[]'::json)
