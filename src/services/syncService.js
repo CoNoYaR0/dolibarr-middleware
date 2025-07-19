@@ -62,11 +62,10 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
 
   // Extract the product folder from the path
   const dolibarrPath = dolibarrImageInfo.path || dolibarrImageInfo.filepath || '';
-  const pathParts = dolibarrPath.split('/');
-  const productFolder = pathParts.length > 1 ? pathParts[0] : '';
+  const productFolder = dolibarrPath.split('/')[0];
 
   let cdnUrl;
-  if (productFolder) {
+  if (productFolder && productFolder !== sanitizedFilename) {
     cdnUrl = `${config.cdn.baseUrl}${productFolder}/${sanitizedFilename}`;
   } else {
     cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
