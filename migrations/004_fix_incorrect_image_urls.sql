@@ -1,8 +1,9 @@
 -- Migration: 004_fix_incorrect_image_urls.sql
--- Updates existing product_images cdn_url to include the product folder.
+-- Updates existing product_images cdn_url to include the product folder and remove double slashes.
 
 BEGIN;
 
+-- First, fix the URLs with the product folder
 UPDATE product_images
 SET cdn_url = 'https://cdn.stainedglass.tn/' || split_part(original_dolibarr_path, '/', 1) || '/' || original_dolibarr_filename
 WHERE original_dolibarr_path IS NOT NULL
@@ -11,5 +12,10 @@ WHERE original_dolibarr_path IS NOT NULL
   AND original_dolibarr_filename != ''
   AND split_part(original_dolibarr_path, '/', 1) != original_dolibarr_filename
   AND cdn_url NOT LIKE 'https://cdn.stainedglass.tn/' || split_part(original_dolibarr_path, '/', 1) || '/%';
+
+-- Then, remove any double slashes
+UPDATE product_images
+SET cdn_url = REGEXP_REPLACE(cdn_url, '([^:]\/)\/+', '\1', 'g')
+WHERE cdn_url LIKE '%//%';
 
 COMMIT;
