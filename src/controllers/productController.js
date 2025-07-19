@@ -55,7 +55,13 @@ async function listProducts(request, reply) {
         SELECT COALESCE(json_agg(sl.*), '[]'::json)
         FROM stock_levels sl
         WHERE sl.product_id = p.id
-      ) as stock_levels
+      ) as stock_levels,
+      -- Aggregate variants
+      (
+        SELECT COALESCE(json_agg(pv.*), '[]'::json)
+        FROM product_variants pv
+        WHERE pv.product_id = p.id
+      ) as variants
   `;
 
   const queryParams = [];
