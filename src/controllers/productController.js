@@ -45,7 +45,13 @@ async function listProducts(request, reply) {
         FROM product_categories_map pcm
         JOIN categories c ON pcm.category_id = c.id
         WHERE pcm.product_id = p.id
-      ) as categories
+      ) as categories,
+      -- Aggregate stock levels
+      (
+        SELECT COALESCE(json_agg(sl.*), '[]'::json)
+        FROM stock_levels sl
+        WHERE sl.product_id = p.id
+      ) as stock_levels
   `;
 
   const queryParams = [];
