@@ -9,6 +9,7 @@ WHERE original_dolibarr_path IS NOT NULL
   AND original_dolibarr_path != ''
   AND original_dolibarr_filename IS NOT NULL
   AND original_dolibarr_filename != ''
+  AND split_part(original_dolibarr_path, '/', 1) != original_dolibarr_filename
   AND cdn_url NOT LIKE 'https://cdn.stainedglass.tn/' || split_part(original_dolibarr_path, '/', 1) || '/%';
 
 COMMIT;
