@@ -1,6 +1,5 @@
 import db from '../services/dbService.js';
 import Joi from 'joi';
-import config from '../config/index.js';
 
 // const logger = console; // Will use request.log provided by Fastify
 
@@ -37,31 +36,8 @@ async function listProducts(request, reply) {
   let querySelect = `
     SELECT
       p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.price, p.slug, p.is_active,
-      -- Aggregate images
-      (
-        SELECT COALESCE(json_agg(pi.*), '[]'::json)
-        FROM product_images pi
-        WHERE pi.product_id = p.id
-      ) as images,
-      -- Aggregate categories
-      (
-        SELECT COALESCE(json_agg(c.*), '[]'::json)
-        FROM product_categories_map pcm
-        JOIN categories c ON pcm.category_id = c.id
-        WHERE pcm.product_id = p.id
-      ) as categories,
-      -- Aggregate stock levels
-      (
-        SELECT COALESCE(json_agg(sl.*), '[]'::json)
-        FROM stock_levels sl
-        WHERE sl.product_id = p.id
-      ) as stock_levels,
-      -- Aggregate variants
-      (
-        SELECT COALESCE(json_agg(pv.*), '[]'::json)
-        FROM product_variants pv
-        WHERE pv.product_id = p.id
-      ) as variants
+      -- Aggregate images (example: get first image as thumbnail_url)
+      (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url
   `;
 
   const queryParams = [];
@@ -187,16 +163,6 @@ async function getProductBySlug(request, reply) {
       ORDER BY c.name;
     `;
     const { rows: productCategories } = await db.query(categoriesQuery, [product.id]);
-
-    // Add fallback image if no images are found
-    if (images.length === 0) {
-      images.push({
-        cdn_url: config.cdn.fallbackImageUrl,
-        alt_text: 'Placeholder image',
-        display_order: 0,
-        is_thumbnail: true,
-      });
-    }
 
     // Structure the response
     const response = {

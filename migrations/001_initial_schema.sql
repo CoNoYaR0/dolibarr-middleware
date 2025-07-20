@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS products (
     description TEXT,
     long_description TEXT,
     price DECIMAL(12, 2), -- Increased precision for price
-    currency_code VARCHAR(3) DEFAULT 'TND',
+    currency_code VARCHAR(3) DEFAULT 'USD',
     category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
     is_active BOOLEAN DEFAULT TRUE,
     meta_title VARCHAR(255),

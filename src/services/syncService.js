@@ -24,13 +24,13 @@ function transformProduct(dolibarrProduct) { // categoryDolibarrToLocalIdMap no 
     dolibarr_product_id: dolibarrProduct.id,
     sku: dolibarrProduct.ref,
     name: dolibarrProduct.label || dolibarrProduct.name,
-    description: dolibarrProduct.description || '',
-    long_description: dolibarrProduct.note_public || dolibarrProduct.long_description || '',
+    description: dolibarrProduct.description,
+    long_description: dolibarrProduct.note_public || dolibarrProduct.long_description,
     price: parseFloat(dolibarrProduct.price) || 0,
     // category_id removed - will be handled by product_categories_map
     is_active: !dolibarrProduct.status_tosell || parseInt(dolibarrProduct.status_tosell, 10) === 1,
     slug: dolibarrProduct.ref ? dolibarrProduct.ref.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `product-${dolibarrProduct.id}`,
-    dolibarr_created_at: dolibarrProduct.date_creation ? new Date(parseInt(dolibarrProduct.date_creation, 10) * 1000) : new Date(0),
+    dolibarr_created_at: dolibarrProduct.date_creation ? new Date(parseInt(dolibarrProduct.date_creation, 10) * 1000) : null,
     dolibarr_updated_at: dolibarrProduct.tms ? new Date(parseInt(dolibarrProduct.tms, 10) * 1000) : null,
   };
 }
@@ -57,23 +57,12 @@ function transformVariant(dolibarrVariant, localProductId) {
   };
 }
 
-function transformProductImage(dolibarrImageInfo, localProductId, localVariantId, filenameFromDolibarr, dolibarrProductData) {
+function transformProductImage(dolibarrImageInfo, localProductId, localVariantId, filenameFromDolibarr) {
   const sanitizedFilename = (filenameFromDolibarr || `placeholder_image_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
-
-  const productFolder = dolibarrProductData.ref;
-
-  let cdnUrl;
-  if (productFolder) {
-    cdnUrl = `${config.cdn.baseUrl}${productFolder}/${sanitizedFilename}`;
-  } else {
-    cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
-  }
-  // Remove double slashes
-  cdnUrl = cdnUrl.replace(/([^:]\/)\/+/g, "$1");
-
+  const cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
   return {
     product_id: localProductId,
-    variant_id: dolibarrImageInfo.variant_id || localVariantId,
+    variant_id: localVariantId,
     s3_bucket: null,
     s3_key: null,
     cdn_url: cdnUrl,
@@ -82,7 +71,7 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
     is_thumbnail: dolibarrImageInfo.is_thumbnail || false,
     dolibarr_image_id: dolibarrImageInfo.id || dolibarrImageInfo.ref,
     original_dolibarr_filename: filenameFromDolibarr,
-    original_dolibarr_path: dolibarrImageInfo.path || dolibarrImageInfo.filepath || '',
+    original_dolibarr_path: dolibarrImageInfo.path || dolibarrImageInfo.filepath || dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url,
   };
 }
 
@@ -251,17 +240,8 @@ async function syncProductImageMetadata() {
       const imagesToProcess = dolibarrProductData.photos || dolibarrProductData.images || [];
       logger.info({ imagesToProcess }, 'Images to process:');
 
-      // Also fetch images for variants
-      const variantsResult = await db.query('SELECT id, dolibarr_variant_id FROM product_variants WHERE product_id = $1', [product.id]);
-      for (const variant of variantsResult.rows) {
-        const variantData = await dolibarrApi.getProductById(variant.dolibarr_variant_id);
-        if (variantData.photos) {
-          imagesToProcess.push(...variantData.photos.map(p => ({...p, variant_id: variant.id})));
-        }
-      }
-
       if (!imagesToProcess || imagesToProcess.length === 0) {
-        logger.warn(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
+        logger.info(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
         continue;
       }
       logger.info(`Found ${imagesToProcess.length} potential image entries for product ID: ${product.dolibarr_product_id}`);
@@ -279,11 +259,12 @@ async function syncProductImageMetadata() {
         }
 
         try {
+          const cdnUrl = `${config.cdn.baseUrl}${filenameFromDolibarr}`;
           const imageDataForDb = transformProductImage(
             dolibarrImageInfo, product.id, null,
-            filenameFromDolibarr,
-            dolibarrProductData
+            filenameFromDolibarr
           );
+          imageDataForDb.cdn_url = cdnUrl;
 
           const imageQueryText = `
             INSERT INTO product_images (
@@ -291,7 +272,7 @@ async function syncProductImageMetadata() {
               dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path,
               s3_bucket, s3_key
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
-            ON CONFLICT (product_id, variant_id, original_dolibarr_filename)
+            ON CONFLICT (product_id, original_dolibarr_filename)
             DO UPDATE SET
               cdn_url = EXCLUDED.cdn_url,
               alt_text = EXCLUDED.alt_text,
@@ -335,7 +316,7 @@ async function syncStockLevels() {
       logger.info({ dlbProdId, stockApiDataFromDolibarr: stockApiData }, 'Raw stock API data received:');
 
       if (!stockApiData || !stockApiData.stock_warehouses || Object.keys(stockApiData.stock_warehouses).length === 0) {
-        logger.warn({ dlbProdId }, 'No stock_warehouses data or empty stock_warehouses for product.');
+        logger.info({ dlbProdId }, 'No stock_warehouses data or empty stock_warehouses for product.');
         continue;
       }
 
