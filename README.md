@@ -224,34 +224,3 @@ The API documentation is automatically generated using Swagger and is available 
 [http://localhost:3000/documentation](http://localhost:3000/documentation)
 
 This interactive documentation allows you to explore the API endpoints and test them directly from your browser.
-
-# Product Variant Handling Report
-
-This report details how the middleware API handles product variants.
-
-## Current Implementation
-
-The API correctly handles product variants, providing a clear and consistent structure for a frontend to consume.
-
-*   **`variants[]` Array:** The `/api/v1/products/:slug` endpoint returns a `variants` array for each product. This array contains all the variants associated with the product.
-
-*   **Variant Attributes:** Variant attributes, such as color and size, are stored in the `attributes` field of each variant object. This field is a JSON object that contains key-value pairs for each attribute. For example:
-
-    ```json
-    {
-      "color": "Red",
-      "size": "L"
-    }
-    ```
-
-*   **Grouping:** Variants are correctly grouped under a base product. They are not returned as separate products.
-
-*   **Attribute Structure:** The structure of the `attributes` object is flexible and can accommodate any type of attribute. The key is the attribute name (e.g., "color"), and the value is the attribute value (e.g., "Red").
-
-*   **Metadata for Selectors:** The API provides all the necessary metadata for a frontend to dynamically build variant selectors. The `variants` array, with its `attributes` objects, allows for the creation of dropdowns or other UI elements to select variant options.
-
-## Recommendations
-
-The current implementation for handling product variants is robust and flexible. No backend improvements are recommended at this time. The existing structure is sufficient for the frontend to build a dynamic variant selection interface.
-
-To ensure data consistency, it is important to make sure that the data in Dolibarr is entered correctly. The `code` or `option` field for each attribute should be a unique identifier (e.g., "color", "size"), and the `value` field should be the attribute's value (e.g., "Red", "L"). By following these conventions, you can ensure that the variant data is displayed correctly on the frontend.
