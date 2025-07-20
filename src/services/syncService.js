@@ -58,20 +58,26 @@ function transformVariant(dolibarrVariant, localProductId) {
 }
 
 function transformProductImage(dolibarrImageInfo, localProductId, localVariantId, filenameFromDolibarr) {
-  const sanitizedFilename = (filenameFromDolibarr || `placeholder_image_${Date.now()}.jpg`).replace(/[^a-zA-Z0-9._-]/g, '_');
-  const cdnUrl = `${config.cdn.baseUrl}${sanitizedFilename}`;
+  const originalPath = dolibarrImageInfo.path || dolibarrImageInfo.filepath || '';
+  const originalFilename = filenameFromDolibarr || '';
+
+  // Remove the leading '/home/stainea/documents/produit/' from the path
+  const relativePath = originalPath.replace('/home/stainea/documents/produit/', '');
+
+  const cdnUrl = `${config.cdn.baseUrl}${relativePath}/${originalFilename}`;
+
   return {
     product_id: localProductId,
     variant_id: localVariantId,
     s3_bucket: null,
     s3_key: null,
     cdn_url: cdnUrl,
-    alt_text: dolibarrImageInfo.alt || dolibarrImageInfo.label || sanitizedFilename,
+    alt_text: dolibarrImageInfo.alt || dolibarrImageInfo.label || originalFilename,
     display_order: parseInt(dolibarrImageInfo.position, 10) || 0,
     is_thumbnail: dolibarrImageInfo.is_thumbnail || false,
     dolibarr_image_id: dolibarrImageInfo.id || dolibarrImageInfo.ref,
-    original_dolibarr_filename: filenameFromDolibarr,
-    original_dolibarr_path: dolibarrImageInfo.path || dolibarrImageInfo.filepath || dolibarrImageInfo.url_photo_absolute || dolibarrImageInfo.url,
+    original_dolibarr_filename: originalFilename,
+    original_dolibarr_path: originalPath,
   };
 }
 
