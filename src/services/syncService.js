@@ -373,9 +373,8 @@ async function processImage(dolibarrImageInfo, localProductId, localVariantId, d
           dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path,
           s3_bucket, s3_key
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
-        ON CONFLICT (product_id, original_dolibarr_filename)
+        ON CONFLICT (dolibarr_image_id)
         DO UPDATE SET
-          cdn_url = EXCLUDED.cdn_url,
           alt_text = EXCLUDED.alt_text,
           display_order = EXCLUDED.display_order,
           is_thumbnail = EXCLUDED.is_thumbnail,
