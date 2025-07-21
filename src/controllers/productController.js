@@ -35,9 +35,12 @@ async function listProducts(request, reply) {
   `;
   let querySelect = `
     SELECT
-      p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.price, p.slug, p.is_active,
-      -- Aggregate images (example: get first image as thumbnail_url)
-      (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url
+      p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.long_description, p.price, p.slug, p.is_active,
+      (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url,
+      (SELECT JSON_AGG(pi) FROM product_images pi WHERE pi.product_id = p.id) as images,
+      (SELECT JSON_AGG(c) FROM categories c INNER JOIN product_categories_map pcm ON pcm.category_id = c.id WHERE pcm.product_id = p.id) as categories,
+      (SELECT JSON_AGG(pv) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
+      (SELECT JSON_AGG(sl) FROM stock_levels sl WHERE sl.product_id = p.id) as stock_levels
   `;
 
   const queryParams = [];
