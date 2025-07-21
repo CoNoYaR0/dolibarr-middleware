@@ -1,5 +1,6 @@
 import categoryController from '../controllers/categoryController.js';
 import productController from '../controllers/productController.js';
+import syncController from '../controllers/syncController.js';
 
 // Define schema/validation for request/response if desired, using Fastify's schema capabilities.
 // Example for listProducts query parameters:
@@ -92,6 +93,15 @@ async function apiRoutes(fastify) {
     }
   }, productController.searchProducts);
   // - Get products by tags/attributes (more advanced filtering)
+
+  // Sync routes
+    fastify.post('/sync', {
+        schema: {
+            summary: 'Trigger a manual data synchronization',
+            description: 'Starts the full data synchronization process from Dolibarr to the local database. This is an asynchronous operation.',
+            tags: ['Sync'],
+        }
+    }, syncController.manualSync);
 }
 
 export default apiRoutes;
