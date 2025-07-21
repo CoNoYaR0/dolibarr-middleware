@@ -312,68 +312,86 @@ async function syncProductImageMetadata() {
     logger.info(`Fetching image metadata for Dolibarr product ID: ${product.dolibarr_product_id} (Local ID: ${product.id})`);
     try {
       const dolibarrProductData = await dolibarrApi.getProductById(product.dolibarr_product_id);
-      logger.info({ dolibarrProductData }, 'Dolibarr product data:');
       const imagesToProcess = dolibarrProductData.photos || dolibarrProductData.images || [];
-      logger.info({ imagesToProcess }, 'Images to process:');
 
       if (!imagesToProcess || imagesToProcess.length === 0) {
         logger.info(`No image metadata found in Dolibarr data for product ID: ${product.dolibarr_product_id}`);
-        continue;
-      }
-      logger.info(`Found ${imagesToProcess.length} potential image entries for product ID: ${product.dolibarr_product_id}`);
-
-      for (const dolibarrImageInfo of imagesToProcess) {
-        logger.info({ dolibarrImageInfo }, 'Processing image...');
-        let filenameFromDolibarr = dolibarrImageInfo.relativename;
-        if (!filenameFromDolibarr) {
-          filenameFromDolibarr = dolibarrImageInfo.filename;
-        }
-
-        if (!filenameFromDolibarr) {
-          logger.warn({ dolibarrImageInfo, productId: product.dolibarr_product_id }, `Skipping image due to missing filename in metadata`);
-          continue;
-        }
-
-        try {
-          const cdnUrl = `${config.cdn.baseUrl}${filenameFromDolibarr}`;
-          const imageDataForDb = transformProductImage(
-            dolibarrImageInfo, product.id, null,
-            filenameFromDolibarr
-          );
-          imageDataForDb.cdn_url = cdnUrl;
-
-          const imageQueryText = `
-            INSERT INTO product_images (
-              product_id, variant_id, cdn_url, alt_text, display_order, is_thumbnail,
-              dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path,
-              s3_bucket, s3_key
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
-            ON CONFLICT (product_id, original_dolibarr_filename)
-            DO UPDATE SET
-              cdn_url = EXCLUDED.cdn_url,
-              alt_text = EXCLUDED.alt_text,
-              display_order = EXCLUDED.display_order,
-              is_thumbnail = EXCLUDED.is_thumbnail,
-              original_dolibarr_path = EXCLUDED.original_dolibarr_path,
-              updated_at = NOW()
-            RETURNING id;
-          `;
-
-          await db.query(imageQueryText, [
-            imageDataForDb.product_id, imageDataForDb.variant_id, imageDataForDb.cdn_url,
-            imageDataForDb.alt_text, imageDataForDb.display_order, imageDataForDb.is_thumbnail,
-            imageDataForDb.dolibarr_image_id, imageDataForDb.original_dolibarr_filename, imageDataForDb.original_dolibarr_path,
-          ]);
-          logger.info({ cdnUrl: imageDataForDb.cdn_url, productId: product.dolibarr_product_id }, `Upserted image metadata`);
-        } catch (dbUpsertError) {
-          logger.error({ err: dbUpsertError, filenameFromDolibarr, productId: product.dolibarr_product_id }, `Error upserting image metadata`);
+      } else {
+        logger.info(`Found ${imagesToProcess.length} potential image entries for product ID: ${product.dolibarr_product_id}`);
+        for (const dolibarrImageInfo of imagesToProcess) {
+          await processImage(dolibarrImageInfo, product.id, null, product.dolibarr_product_id);
         }
       }
+
+      const variantsResult = await db.query('SELECT id, dolibarr_variant_id FROM product_variants WHERE product_id = $1', [product.id]);
+      for (const variant of variantsResult.rows) {
+        const variantImagesResult = await db.query('SELECT * FROM product_images WHERE variant_id = $1', [variant.id]);
+        if (variantImagesResult.rows.length === 0) {
+          const parentImagesResult = await db.query('SELECT * FROM product_images WHERE product_id = $1 AND variant_id IS NULL', [product.id]);
+          for (const parentImage of parentImagesResult.rows) {
+            await db.query(
+              `INSERT INTO product_images (product_id, variant_id, cdn_url, alt_text, display_order, is_thumbnail, dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path, s3_bucket, s3_key)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
+               ON CONFLICT (product_id, original_dolibarr_filename) DO NOTHING`,
+              [product.id, variant.id, parentImage.cdn_url, parentImage.alt_text, parentImage.display_order, parentImage.is_thumbnail, parentImage.dolibarr_image_id, parentImage.original_dolibarr_filename, parentImage.original_dolibarr_path]
+            );
+          }
+        }
+      }
+
     } catch (error) {
       logger.error({ err: error, productId: product.dolibarr_product_id }, `Error fetching image metadata`);
     }
   }
   logger.info('Product image metadata synchronization finished.');
+}
+
+async function processImage(dolibarrImageInfo, localProductId, localVariantId, dolibarrProductId) {
+    logger.info({ dolibarrImageInfo }, 'Processing image...');
+    let filenameFromDolibarr = dolibarrImageInfo.relativename;
+    if (!filenameFromDolibarr) {
+        filenameFromDolibarr = dolibarrImageInfo.filename;
+    }
+
+    if (!filenameFromDolibarr) {
+        logger.warn({ dolibarrImageInfo, productId: dolibarrProductId }, `Skipping image due to missing filename in metadata`);
+        return;
+    }
+
+    try {
+        const cdnUrl = `${config.cdn.baseUrl}${filenameFromDolibarr}`;
+        const imageDataForDb = transformProductImage(
+            dolibarrImageInfo, localProductId, localVariantId,
+            filenameFromDolibarr
+        );
+        imageDataForDb.cdn_url = cdnUrl;
+
+        const imageQueryText = `
+        INSERT INTO product_images (
+          product_id, variant_id, cdn_url, alt_text, display_order, is_thumbnail,
+          dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path,
+          s3_bucket, s3_key
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
+        ON CONFLICT (product_id, original_dolibarr_filename)
+        DO UPDATE SET
+          cdn_url = EXCLUDED.cdn_url,
+          alt_text = EXCLUDED.alt_text,
+          display_order = EXCLUDED.display_order,
+          is_thumbnail = EXCLUDED.is_thumbnail,
+          original_dolibarr_path = EXCLUDED.original_dolibarr_path,
+          updated_at = NOW()
+        RETURNING id;
+      `;
+
+        await db.query(imageQueryText, [
+            imageDataForDb.product_id, imageDataForDb.variant_id, imageDataForDb.cdn_url,
+            imageDataForDb.alt_text, imageDataForDb.display_order, imageDataForDb.is_thumbnail,
+            imageDataForDb.dolibarr_image_id, imageDataForDb.original_dolibarr_filename, imageDataForDb.original_dolibarr_path,
+        ]);
+        logger.info({ cdnUrl: imageDataForDb.cdn_url, productId: dolibarrProductId }, `Upserted image metadata`);
+    } catch (dbUpsertError) {
+        logger.error({ err: dbUpsertError, filenameFromDolibarr, productId: dolibarrProductId }, `Error upserting image metadata`);
+    }
 }
 
 

@@ -36,7 +36,7 @@ async function listProducts(request, reply) {
   let querySelect = `
     SELECT
       p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.long_description, p.price, p.currency_code, p.tax_rate, p.brand, p.weight, p.weight_unit, p.height, p.width, p.depth, p.dimensions_unit, p.meta_title, p.meta_description, p.meta_keywords, p.tags, p.slug, p.is_active, p.created_at, p.updated_at, p.attributes,
-      (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url,
+      COALESCE((SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1), 'https://via.placeholder.com/150') as thumbnail_url,
       (SELECT JSON_AGG(pi) FROM product_images pi WHERE pi.product_id = p.id) as images,
       (SELECT JSON_AGG(c) FROM categories c INNER JOIN product_categories_map pcm ON pcm.category_id = c.id WHERE pcm.product_id = p.id) as categories,
       (SELECT JSON_AGG(pv) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
@@ -140,14 +140,23 @@ async function getProductBySlug(request, reply) {
     const { rows: variants } = await db.query(variantsQuery, [product.id]);
 
     // 3. Fetch product images (for base product and all its variants)
-    // This query fetches all images associated with the product or any of its variants.
-    // Frontend might need to associate them correctly.
     const imagesQuery = `
       SELECT * FROM product_images
-      WHERE product_id = $1 OR variant_id IN (SELECT id FROM product_variants WHERE product_id = $1)
+      WHERE product_id = $1
       ORDER BY variant_id NULLS FIRST, display_order ASC, id ASC
     `;
     const { rows: images } = await db.query(imagesQuery, [product.id]);
+
+    // Add parent images to variants without images
+    variants.forEach(variant => {
+        const variantImages = images.filter(img => img.variant_id === variant.id);
+        if (variantImages.length === 0) {
+            const parentImages = images.filter(img => img.variant_id === null);
+            variant.images = parentImages;
+        } else {
+            variant.images = variantImages;
+        }
+    });
 
     // 4. Fetch stock levels (for base product and all its variants)
     // This query fetches all stock entries. Assumes 'default' warehouse if not specified.
