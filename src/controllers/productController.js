@@ -35,7 +35,7 @@ async function listProducts(request, reply) {
   `;
   let querySelect = `
     SELECT
-      p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.long_description, p.price, p.currency_code, p.tax_rate, p.brand, p.weight, p.weight_unit, p.height, p.width, p.depth, p.dimensions_unit, p.meta_title, p.meta_description, p.meta_keywords, p.tags, p.slug, p.is_active, p.created_at, p.updated_at,
+      p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.long_description, p.price, p.currency_code, p.tax_rate, p.brand, p.weight, p.weight_unit, p.height, p.width, p.depth, p.dimensions_unit, p.meta_title, p.meta_description, p.meta_keywords, p.tags, p.slug, p.is_active, p.created_at, p.updated_at, p.attributes,
       (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url,
       (SELECT JSON_AGG(pi) FROM product_images pi WHERE pi.product_id = p.id) as images,
       (SELECT JSON_AGG(c) FROM categories c INNER JOIN product_categories_map pcm ON pcm.category_id = c.id WHERE pcm.product_id = p.id) as categories,

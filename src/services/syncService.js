@@ -160,24 +160,87 @@ async function syncProducts() {
       currentPage++;
     }
     logger.info(`Fetched ${allProducts.length} products.`);
-    for (const dolibarrProductData of allProducts) {
-      logger.info({ productId: dolibarrProductData.id, ref: dolibarrProductData.ref, fk_categorie: dolibarrProductData.fk_categorie, api_category_id: dolibarrProductData.category_id }, 'Raw product category fields from API:');
 
-      const productToInsert = transformProduct(dolibarrProductData); // Pass only dolibarrProductData
-      if (!productToInsert.dolibarr_product_id) continue;
+    const { parentProducts, variantProducts } = groupProductsByNamingConvention(allProducts);
 
-      const { rows: insertedProductRows } = await db.query(
-        `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, currency_code, tax_rate, brand, weight, weight_unit, height, width, depth, dimensions_unit, meta_title, meta_description, meta_keywords, tags, is_active, slug, dolibarr_created_at, dolibarr_updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+    for (const dolibarrProductData of parentProducts) {
+      await processProduct(dolibarrProductData, catMap, variantProducts);
+    }
+
+    for (const dolibarrProductData of variantProducts) {
+        if (!parentProducts.some(p => p.id === dolibarrProductData.fk_product_parent)) {
+            await processProduct(dolibarrProductData, catMap, variantProducts);
+        }
+    }
+
+    logger.info('Product synchronization finished.');
+  } catch (error) {
+    logger.error({ err: error }, 'Error during product synchronization');
+  }
+}
+
+function groupProductsByNamingConvention(products) {
+    const parentProducts = products.filter(p => !p.ref.match(/_C\d+$/));
+    const variantProducts = products.filter(p => p.ref.match(/_C\d+$/));
+
+    variantProducts.forEach(variant => {
+        const rootSku = variant.ref.replace(/_C\d+$/, '');
+        const parent = parentProducts.find(p => p.ref === rootSku);
+        if (parent) {
+            variant.fk_product_parent = parent.id;
+        }
+    });
+
+    return { parentProducts, variantProducts };
+}
+
+function inferAttributes(parent, variant) {
+    const attributes = {};
+    const parentDesc = parent.description || '';
+    const variantDesc = variant.description || '';
+
+    const diff = variantDesc.replace(parentDesc, '').trim();
+
+    if (diff) {
+        const parts = diff.split(':').map(p => p.trim());
+        if (parts.length === 2) {
+            attributes[parts[0]] = parts[1];
+        } else {
+            attributes['variant'] = diff;
+        }
+    }
+
+    return attributes;
+}
+
+async function processProduct(dolibarrProductData, catMap, allVariantProducts) {
+    logger.info({ productId: dolibarrProductData.id, ref: dolibarrProductData.ref }, 'Processing product...');
+    const productToInsert = transformProduct(dolibarrProductData);
+    if (!productToInsert.dolibarr_product_id) return;
+
+    const variants = allVariantProducts.filter(v => v.fk_product_parent === dolibarrProductData.id);
+    const parentAttributes = new Set();
+    if (variants.length > 0) {
+        variants.forEach(v => {
+            const attributes = inferAttributes(dolibarrProductData, v);
+            Object.keys(attributes).forEach(key => parentAttributes.add(key));
+        });
+        productToInsert.attributes = Array.from(parentAttributes);
+    }
+
+
+    const { rows: insertedProductRows } = await db.query(
+        `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, currency_code, tax_rate, brand, weight, weight_unit, height, width, depth, dimensions_unit, meta_title, meta_description, meta_keywords, tags, is_active, slug, attributes, dolibarr_created_at, dolibarr_updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
          ON CONFLICT (dolibarr_product_id) DO UPDATE SET
            sku = EXCLUDED.sku, name = EXCLUDED.name, description = EXCLUDED.description, long_description = EXCLUDED.long_description,
-           price = EXCLUDED.price, currency_code = EXCLUDED.currency_code, tax_rate = EXCLUDED.tax_rate, brand = EXCLUDED.brand, weight = EXCLUDED.weight, weight_unit = EXCLUDED.weight_unit, height = EXCLUDED.height, width = EXCLUDED.width, depth = EXCLUDED.depth, dimensions_unit = EXCLUDED.dimensions_unit, meta_title = EXCLUDED.meta_title, meta_description = EXCLUDED.meta_description, meta_keywords = EXCLUDED.meta_keywords, tags = EXCLUDED.tags, is_active = EXCLUDED.is_active, slug = EXCLUDED.slug,
+           price = EXCLUDED.price, currency_code = EXCLUDED.currency_code, tax_rate = EXCLUDED.tax_rate, brand = EXCLUDED.brand, weight = EXCLUDED.weight, weight_unit = EXCLUDED.weight_unit, height = EXCLUDED.height, width = EXCLUDED.width, depth = EXCLUDED.depth, dimensions_unit = EXCLUDED.dimensions_unit, meta_title = EXCLUDED.meta_title, meta_description = EXCLUDED.meta_description, meta_keywords = EXCLUDED.meta_keywords, tags = EXCLUDED.tags, is_active = EXCLUDED.is_active, slug = EXCLUDED.slug, attributes = EXCLUDED.attributes,
            dolibarr_created_at = EXCLUDED.dolibarr_created_at, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()
          RETURNING id, dolibarr_product_id;`,
-        [productToInsert.dolibarr_product_id, productToInsert.sku, productToInsert.name, productToInsert.description, productToInsert.long_description, productToInsert.price, productToInsert.currency_code, productToInsert.tax_rate, productToInsert.brand, productToInsert.weight, productToInsert.weight_unit, productToInsert.height, productToInsert.width, productToInsert.depth, productToInsert.dimensions_unit, productToInsert.meta_title, productToInsert.meta_description, productToInsert.meta_keywords, productToInsert.tags, productToInsert.is_active, productToInsert.slug, productToInsert.dolibarr_created_at, productToInsert.dolibarr_updated_at]
-      );
+        [productToInsert.dolibarr_product_id, productToInsert.sku, productToInsert.name, productToInsert.description, productToInsert.long_description, productToInsert.price, productToInsert.currency_code, productToInsert.tax_rate, productToInsert.brand, productToInsert.weight, productToInsert.weight_unit, productToInsert.height, productToInsert.width, productToInsert.depth, productToInsert.dimensions_unit, productToInsert.meta_title, productToInsert.meta_description, productToInsert.meta_keywords, productToInsert.tags, productToInsert.is_active, productToInsert.slug, productToInsert.attributes, productToInsert.dolibarr_created_at, productToInsert.dolibarr_updated_at]
+    );
 
-      if (insertedProductRows && insertedProductRows.length > 0) {
+    if (insertedProductRows && insertedProductRows.length > 0) {
         const localProductId = insertedProductRows[0].id;
         const currentDolibarrProductId = insertedProductRows[0].dolibarr_product_id;
 
@@ -185,67 +248,56 @@ async function syncProducts() {
         logger.info({ localProductId }, `Cleared existing category links for product.`);
 
         try {
-          const productCategoriesArray = await dolibarrApi.getProductCategories(currentDolibarrProductId);
-          logger.info({ productId: currentDolibarrProductId, fetchedCategories: productCategoriesArray }, 'Categories fetched for product:');
+            const productCategoriesArray = await dolibarrApi.getProductCategories(currentDolibarrProductId);
+            logger.info({ productId: currentDolibarrProductId, fetchedCategories: productCategoriesArray }, 'Categories fetched for product:');
 
-          if (productCategoriesArray && productCategoriesArray.length > 0) {
-            for (const productDolibarrCategory of productCategoriesArray) {
-              if (productDolibarrCategory && productDolibarrCategory.id) {
-                const localCatId = catMap.get(parseInt(productDolibarrCategory.id, 10));
-                if (localCatId) {
-                  await db.query(
-                    'INSERT INTO product_categories_map (product_id, category_id) VALUES ($1, $2) ON CONFLICT (product_id, category_id) DO NOTHING',
-                    [localProductId, localCatId]
-                  );
-                  logger.info({ productId: currentDolibarrProductId, localProductId, dolibarrCategoryId: productDolibarrCategory.id, localCategoryId: localCatId }, 'Linked product to category in map table.');
-                } else {
-                  logger.warn({ productId: currentDolibarrProductId, dolibarrCategoryId: productDolibarrCategory.id }, 'Local category mapping not found for product category.');
+            if (productCategoriesArray && productCategoriesArray.length > 0) {
+                for (const productDolibarrCategory of productCategoriesArray) {
+                    if (productDolibarrCategory && productDolibarrCategory.id) {
+                        const localCatId = catMap.get(parseInt(productDolibarrCategory.id, 10));
+                        if (localCatId) {
+                            await db.query(
+                                'INSERT INTO product_categories_map (product_id, category_id) VALUES ($1, $2) ON CONFLICT (product_id, category_id) DO NOTHING',
+                                [localProductId, localCatId]
+                            );
+                            logger.info({ productId: currentDolibarrProductId, localProductId, dolibarrCategoryId: productDolibarrCategory.id, localCategoryId: localCatId }, 'Linked product to category in map table.');
+                        } else {
+                            logger.warn({ productId: currentDolibarrProductId, dolibarrCategoryId: productDolibarrCategory.id }, 'Local category mapping not found for product category.');
+                        }
+                    } else {
+                        logger.info({ productId: currentDolibarrProductId, categoryItem: productDolibarrCategory }, 'No valid category ID found in productCategoriesArray item.');
+                    }
                 }
-              } else {
-                logger.info({ productId: currentDolibarrProductId, categoryItem: productDolibarrCategory }, 'No valid category ID found in productCategoriesArray item.');
-              }
+            } else {
+                logger.info({ productId: currentDolibarrProductId }, 'No categories returned by getProductCategories for this product.');
             }
-          } else {
-            logger.info({ productId: currentDolibarrProductId }, 'No categories returned by getProductCategories for this product.');
-          }
         } catch (catError) {
-          logger.error({ err: catError, productId: currentDolibarrProductId }, `Error fetching or linking categories for product.`);
+            logger.error({ err: catError, productId: currentDolibarrProductId }, `Error fetching or linking categories for product.`);
         }
-      }
+
+        if (variants.length > 0) {
+            for (const v of variants) {
+                const attributes = inferAttributes(dolibarrProductData, v);
+                const data = transformVariant(v, localProductId);
+                data.attributes = attributes;
+                await db.query(
+                    `INSERT INTO product_variants (dolibarr_variant_id, product_id, sku_variant, price_modifier, attributes, weight_modifier, dimensions_modifier, dolibarr_created_at, dolibarr_updated_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     ON CONFLICT (dolibarr_variant_id) DO UPDATE SET
+                       product_id = EXCLUDED.product_id, sku_variant = EXCLUDED.sku_variant, price_modifier = EXCLUDED.price_modifier,
+                       attributes = EXCLUDED.attributes, weight_modifier = EXCLUDED.weight_modifier, dimensions_modifier = EXCLUDED.dimensions_modifier,
+                       dolibarr_created_at = EXCLUDED.dolibarr_created_at,
+                       dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()`,
+                    [data.dolibarr_variant_id, data.product_id, data.sku_variant, data.price_modifier, data.attributes, data.weight_modifier, data.dimensions_modifier, data.dolibarr_created_at, data.dolibarr_updated_at]
+                );
+            }
+        }
     }
-    logger.info('Product synchronization finished.');
-  } catch (error) {
-    logger.error({ err: error }, 'Error during product synchronization');
-  }
 }
 
 async function syncProductVariants() {
-  logger.info('Starting product variant synchronization...');
-  const prodsRes = await db.query('SELECT id, dolibarr_product_id FROM products WHERE dolibarr_product_id IS NOT NULL;');
-  if (prodsRes.rows.length === 0) { logger.info('No products to sync variants for.'); return; }
-  for (const p of prodsRes.rows) {
-    try {
-      const variants = await dolibarrApi.getProductVariants(p.dolibarr_product_id);
-      if (!variants || variants.length === 0) continue;
-      for (const v of variants) {
-        if (!v.id) continue;
-        const data = transformVariant(v, p.id);
-        await db.query(
-          `INSERT INTO product_variants (dolibarr_variant_id, product_id, sku_variant, price_modifier, attributes, dolibarr_created_at, dolibarr_updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           ON CONFLICT (dolibarr_variant_id) DO UPDATE SET
-             product_id = EXCLUDED.product_id, sku_variant = EXCLUDED.sku_variant, price_modifier = EXCLUDED.price_modifier,
-             attributes = EXCLUDED.attributes, weight_modifier = EXCLUDED.weight_modifier, dimensions_modifier = EXCLUDED.dimensions_modifier,
-             dolibarr_created_at = EXCLUDED.dolibarr_created_at,
-             dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()`,
-          [data.dolibarr_variant_id, data.product_id, data.sku_variant, data.price_modifier, data.attributes, data.weight_modifier, data.dimensions_modifier, data.dolibarr_created_at, data.dolibarr_updated_at]
-        );
-      }
-    } catch (error) {
-      logger.error({ err: error, productId: p.dolibarr_product_id }, `Error syncing variants`);
-    }
-  }
-  logger.info('Product variant synchronization finished.');
+    // This function is now handled by the processProduct function
+    logger.info('Product variant synchronization is now part of the main product sync.');
 }
 
 async function syncProductImageMetadata() {
