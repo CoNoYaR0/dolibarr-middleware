@@ -27,6 +27,19 @@ function transformProduct(dolibarrProduct) { // categoryDolibarrToLocalIdMap no 
     description: dolibarrProduct.description,
     long_description: dolibarrProduct.note_public || dolibarrProduct.long_description,
     price: parseFloat(dolibarrProduct.price) || 0,
+    currency_code: dolibarrProduct.currency_code || 'USD',
+    tax_rate: parseFloat(dolibarrProduct.tva_tx) || 0,
+    brand: dolibarrProduct.brand,
+    weight: parseFloat(dolibarrProduct.weight) || 0,
+    weight_unit: dolibarrProduct.weight_units_short || 'kg',
+    height: parseFloat(dolibarrProduct.height) || 0,
+    width: parseFloat(dolibarrProduct.width) || 0,
+    depth: parseFloat(dolibarrProduct.length) || 0,
+    dimensions_unit: dolibarrProduct.size_units_short || 'cm',
+    meta_title: dolibarrProduct.meta_title || dolibarrProduct.label || dolibarrProduct.name,
+    meta_description: dolibarrProduct.meta_description || dolibarrProduct.description,
+    meta_keywords: dolibarrProduct.meta_keywords,
+    tags: dolibarrProduct.tags,
     // category_id removed - will be handled by product_categories_map
     is_active: !dolibarrProduct.status_tosell || parseInt(dolibarrProduct.status_tosell, 10) === 1,
     slug: dolibarrProduct.ref ? dolibarrProduct.ref.toLowerCase().replace(/[^a-z0-9]+/g, '-') : `product-${dolibarrProduct.id}`,
@@ -52,6 +65,8 @@ function transformVariant(dolibarrVariant, localProductId) {
     sku_variant: dolibarrVariant.ref || `${dolibarrVariant.parent_ref}-var-${dolibarrVariant.id}`,
     price_modifier: parseFloat(dolibarrVariant.price_var) || 0,
     attributes: attributesJson,
+    weight_modifier: parseFloat(dolibarrVariant.weight_impact) || 0,
+    dimensions_modifier: dolibarrVariant.size_impact,
     dolibarr_created_at: dolibarrVariant.date_creation ? new Date(parseInt(dolibarrVariant.date_creation, 10) * 1000) : null,
     dolibarr_updated_at: dolibarrVariant.tms ? new Date(parseInt(dolibarrVariant.tms, 10) * 1000) : null,
   };
@@ -87,6 +102,8 @@ function transformStockLevel(dolibarrStockEntry, localProductId, localVariantId)
     variant_id: localVariantId,
     quantity: parseInt(dolibarrStockEntry.qty || dolibarrStockEntry.stock_reel || 0, 10),
     warehouse_id: dolibarrStockEntry.fk_warehouse || dolibarrStockEntry.warehouse_id || 'default',
+    backorderable: dolibarrStockEntry.backorderable || false,
+    stock_status: dolibarrStockEntry.stock_status || (parseInt(dolibarrStockEntry.qty || dolibarrStockEntry.stock_reel || 0, 10) > 0 ? 'in_stock' : 'out_of_stock'),
     dolibarr_updated_at: (dolibarrStockEntry.tms || dolibarrStockEntry.date_modification) ? new Date(parseInt(dolibarrStockEntry.tms || dolibarrStockEntry.date_modification, 10) * 1000) : new Date(),
   };
 }
@@ -150,14 +167,14 @@ async function syncProducts() {
       if (!productToInsert.dolibarr_product_id) continue;
 
       const { rows: insertedProductRows } = await db.query(
-        `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, is_active, slug, dolibarr_created_at, dolibarr_updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO products (dolibarr_product_id, sku, name, description, long_description, price, currency_code, tax_rate, brand, weight, weight_unit, height, width, depth, dimensions_unit, meta_title, meta_description, meta_keywords, tags, is_active, slug, dolibarr_created_at, dolibarr_updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
          ON CONFLICT (dolibarr_product_id) DO UPDATE SET
            sku = EXCLUDED.sku, name = EXCLUDED.name, description = EXCLUDED.description, long_description = EXCLUDED.long_description,
-           price = EXCLUDED.price, is_active = EXCLUDED.is_active, slug = EXCLUDED.slug,
+           price = EXCLUDED.price, currency_code = EXCLUDED.currency_code, tax_rate = EXCLUDED.tax_rate, brand = EXCLUDED.brand, weight = EXCLUDED.weight, weight_unit = EXCLUDED.weight_unit, height = EXCLUDED.height, width = EXCLUDED.width, depth = EXCLUDED.depth, dimensions_unit = EXCLUDED.dimensions_unit, meta_title = EXCLUDED.meta_title, meta_description = EXCLUDED.meta_description, meta_keywords = EXCLUDED.meta_keywords, tags = EXCLUDED.tags, is_active = EXCLUDED.is_active, slug = EXCLUDED.slug,
            dolibarr_created_at = EXCLUDED.dolibarr_created_at, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()
          RETURNING id, dolibarr_product_id;`,
-        [productToInsert.dolibarr_product_id, productToInsert.sku, productToInsert.name, productToInsert.description, productToInsert.long_description, productToInsert.price, productToInsert.is_active, productToInsert.slug, productToInsert.dolibarr_created_at, productToInsert.dolibarr_updated_at]
+        [productToInsert.dolibarr_product_id, productToInsert.sku, productToInsert.name, productToInsert.description, productToInsert.long_description, productToInsert.price, productToInsert.currency_code, productToInsert.tax_rate, productToInsert.brand, productToInsert.weight, productToInsert.weight_unit, productToInsert.height, productToInsert.width, productToInsert.depth, productToInsert.dimensions_unit, productToInsert.meta_title, productToInsert.meta_description, productToInsert.meta_keywords, productToInsert.tags, productToInsert.is_active, productToInsert.slug, productToInsert.dolibarr_created_at, productToInsert.dolibarr_updated_at]
       );
 
       if (insertedProductRows && insertedProductRows.length > 0) {
@@ -215,12 +232,13 @@ async function syncProductVariants() {
         const data = transformVariant(v, p.id);
         await db.query(
           `INSERT INTO product_variants (dolibarr_variant_id, product_id, sku_variant, price_modifier, attributes, dolibarr_created_at, dolibarr_updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (dolibarr_variant_id) DO UPDATE SET
              product_id = EXCLUDED.product_id, sku_variant = EXCLUDED.sku_variant, price_modifier = EXCLUDED.price_modifier,
-             attributes = EXCLUDED.attributes, dolibarr_created_at = EXCLUDED.dolibarr_created_at,
+             attributes = EXCLUDED.attributes, weight_modifier = EXCLUDED.weight_modifier, dimensions_modifier = EXCLUDED.dimensions_modifier,
+             dolibarr_created_at = EXCLUDED.dolibarr_created_at,
              dolibarr_updated_at = EXCLUDED.dolibarr_updated_at, updated_at = NOW()`,
-          [data.dolibarr_variant_id, data.product_id, data.sku_variant, data.price_modifier, data.attributes, data.dolibarr_created_at, data.dolibarr_updated_at]
+          [data.dolibarr_variant_id, data.product_id, data.sku_variant, data.price_modifier, data.attributes, data.weight_modifier, data.dimensions_modifier, data.dolibarr_created_at, data.dolibarr_updated_at]
         );
       }
     } catch (error) {
@@ -357,11 +375,11 @@ async function syncStockLevels() {
         const data = transformStockLevel(syntheticEntry, locProdId, locVarId);
         await db.query(
           `INSERT INTO stock_levels (product_id, variant_id, quantity, warehouse_id, dolibarr_updated_at, last_checked_at)
-           VALUES ($1, $2, $3, $4, $5, NOW())
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
            ON CONFLICT (product_id, variant_id, warehouse_id) DO UPDATE SET
-             quantity = EXCLUDED.quantity, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
+             quantity = EXCLUDED.quantity, backorderable = EXCLUDED.backorderable, stock_status = EXCLUDED.stock_status, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
              last_checked_at = NOW(), updated_at = NOW()`,
-          [data.product_id, data.variant_id, data.quantity, data.warehouse_id, data.dolibarr_updated_at]
+          [data.product_id, data.variant_id, data.quantity, data.warehouse_id, data.backorderable, data.stock_status, data.dolibarr_updated_at]
         );
       }
     } catch (error) {
