@@ -211,7 +211,7 @@ function inferAttributes(parent, variant) {
         }
     }
 
-    return attributes;
+    return JSON.stringify(attributes);
 }
 
 async function processProduct(dolibarrProductData, catMap, allVariantProducts) {
@@ -220,13 +220,13 @@ async function processProduct(dolibarrProductData, catMap, allVariantProducts) {
     if (!productToInsert.dolibarr_product_id) return;
 
     const variants = allVariantProducts.filter(v => v.fk_product_parent === dolibarrProductData.id);
-    const parentAttributes = new Set();
+    const parentAttributes = {};
     if (variants.length > 0) {
         variants.forEach(v => {
             const attributes = inferAttributes(dolibarrProductData, v);
-            Object.keys(attributes).forEach(key => parentAttributes.add(key));
+            Object.assign(parentAttributes, JSON.parse(attributes));
         });
-        productToInsert.attributes = Array.from(parentAttributes);
+        productToInsert.attributes = JSON.stringify(parentAttributes);
     }
 
 
@@ -373,7 +373,7 @@ async function processImage(dolibarrImageInfo, localProductId, localVariantId, d
           dolibarr_image_id, original_dolibarr_filename, original_dolibarr_path,
           s3_bucket, s3_key
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL)
-        ON CONFLICT (dolibarr_image_id)
+        ON CONFLICT (product_id, original_dolibarr_filename)
         DO UPDATE SET
           alt_text = EXCLUDED.alt_text,
           display_order = EXCLUDED.display_order,
@@ -444,7 +444,7 @@ async function syncStockLevels() {
 
         const data = transformStockLevel(syntheticEntry, locProdId, locVarId);
         await db.query(
-          `INSERT INTO stock_levels (product_id, variant_id, quantity, warehouse_id, dolibarr_updated_at, last_checked_at)
+          `INSERT INTO stock_levels (product_id, variant_id, quantity, warehouse_id, backorderable, stock_status, dolibarr_updated_at, last_checked_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
            ON CONFLICT (product_id, variant_id, warehouse_id) DO UPDATE SET
              quantity = EXCLUDED.quantity, backorderable = EXCLUDED.backorderable, stock_status = EXCLUDED.stock_status, dolibarr_updated_at = EXCLUDED.dolibarr_updated_at,
