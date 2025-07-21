@@ -76,10 +76,11 @@ function transformProductImage(dolibarrImageInfo, localProductId, localVariantId
   const originalPath = dolibarrImageInfo.path || dolibarrImageInfo.filepath || '';
   const originalFilename = filenameFromDolibarr || '';
 
-  // Remove the leading '/home/stainea/documents/produit/' from the path
-  const relativePath = originalPath.replace('/home/stainea/documents/produit/', '');
+  const productName = originalFilename.split('-')[0];
+  let cdnUrl = `${config.cdn.baseUrl}${productName}/${originalFilename}`;
 
-  const cdnUrl = `${config.cdn.baseUrl}${relativePath}/${originalFilename}`;
+  // Remove any double slashes
+  cdnUrl = cdnUrl.replace(/([^:]\/)\/+/g, '$1');
 
   return {
     product_id: localProductId,
