@@ -35,12 +35,14 @@ async function listProducts(request, reply) {
   `;
   let querySelect = `
     SELECT
-      p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.long_description, p.price, p.slug, p.is_active,
+      p.id, p.dolibarr_product_id, p.sku, p.name, p.description, p.long_description, p.price, p.currency_code, p.tax_rate, p.brand, p.weight, p.weight_unit, p.height, p.width, p.depth, p.dimensions_unit, p.meta_title, p.meta_description, p.meta_keywords, p.tags, p.slug, p.is_active, p.created_at, p.updated_at,
       (SELECT pi.cdn_url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.display_order ASC, pi.id ASC LIMIT 1) as thumbnail_url,
       (SELECT JSON_AGG(pi) FROM product_images pi WHERE pi.product_id = p.id) as images,
       (SELECT JSON_AGG(c) FROM categories c INNER JOIN product_categories_map pcm ON pcm.category_id = c.id WHERE pcm.product_id = p.id) as categories,
       (SELECT JSON_AGG(pv) FROM product_variants pv WHERE pv.product_id = p.id) as variants,
-      (SELECT JSON_AGG(sl) FROM stock_levels sl WHERE sl.product_id = p.id) as stock_levels
+      (SELECT JSON_AGG(sl) FROM stock_levels sl WHERE sl.product_id = p.id) as stock_levels,
+      (SELECT JSON_AGG(rp) FROM related_products rp WHERE rp.product_id = p.id) as related_products,
+      (SELECT JSON_AGG(pt) FROM pricing_tiers pt WHERE pt.product_id = p.id) as pricing_tiers
   `;
 
   const queryParams = [];
@@ -124,7 +126,7 @@ async function getProductBySlug(request, reply) {
 
   try {
     // 1. Fetch the base product
-    const productQuery = 'SELECT * FROM products WHERE slug = $1 AND is_active = TRUE'; // Or use ID
+    const productQuery = 'SELECT *, p.created_at as product_created_at, p.updated_at as product_updated_at FROM products p WHERE slug = $1 AND is_active = TRUE'; // Or use ID
     const { rows: productResult } = await db.query(productQuery, [slug]);
 
     if (productResult.length === 0) {
@@ -167,6 +169,19 @@ async function getProductBySlug(request, reply) {
     `;
     const { rows: productCategories } = await db.query(categoriesQuery, [product.id]);
 
+    // 6. Fetch related products
+    const relatedProductsQuery = `
+      SELECT rp.related_product_id, rp.relation_type, p.slug, p.name, p.sku
+      FROM related_products rp
+      JOIN products p ON p.id = rp.related_product_id
+      WHERE rp.product_id = $1;
+    `;
+    const { rows: relatedProducts } = await db.query(relatedProductsQuery, [product.id]);
+
+    // 7. Fetch pricing tiers
+    const pricingTiersQuery = 'SELECT * FROM pricing_tiers WHERE product_id = $1 ORDER BY min_quantity ASC';
+    const { rows: pricingTiers } = await db.query(pricingTiersQuery, [product.id]);
+
     // Structure the response
     const response = {
       ...product,
@@ -174,6 +189,8 @@ async function getProductBySlug(request, reply) {
       variants,
       images,
       stockLevels,
+      related_products: relatedProducts,
+      pricing_tiers: pricingTiers,
     };
 
     reply.send(response);

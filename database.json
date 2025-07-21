@@ -1,0 +1,11 @@
+{
+  "defaultEnv": "dev",
+  "dev": {
+    "driver": "pg",
+    "user": "user",
+    "password": "password",
+    "host": "localhost",
+    "database": "dolibarr-middleware",
+    "port": 5432
+  }
+}
