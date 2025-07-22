@@ -147,7 +147,7 @@ fastify.setErrorHandler((error, request, reply) => {
       error: 'Validation Error',
       message: 'Invalid input parameters.',
       details: error.validation.map(v => ({
-        field: v.dataPath.substring(1), // remove leading '.' or '/'
+        field: typeof v.dataPath === 'string' && v.dataPath.length > 0 ? v.dataPath.substring(1) : '', // Safely access dataPath
         message: v.message,
         params: v.params,
       })),
